@@ -101,13 +101,13 @@ class ShapeNetCore(Dataset):
                     scale = self.stats['std'].reshape(1, 1)
                 elif self.scale_mode == 'shape_unit':
                     shift = pc.mean(dim=0).reshape(1, 3)
-                    scale = self.flatten().std().reshape(1, 1)
+                    scale = pc.flatten().std().reshape(1, 1)
                 elif self.scale_mode == 'shape_half':
                     shift = pc.mean(dim=0).reshape(1, 3)
-                    scale = self.flatten().std().reshape(1, 1) / (0.5)
+                    scale = pc.flatten().std().reshape(1, 1) / (0.5)
                 elif self.scale_mode == 'shape_34':
                     shift = pc.mean(dim=0).reshape(1, 3)
-                    scale = self.flatten().std().reshape(1, 1) / (0.75)
+                    scale = pc.flatten().std().reshape(1, 1) / (0.75)
                 elif self.scale_mode == 'shape_bbox':
                     pc_max, _ = pc.max(dim=0, keepdim=True)
                     pc_min, _ = pc.min(dim=0, keepdim=True)

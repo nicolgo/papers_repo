@@ -5,6 +5,7 @@ import torch.utils.tensorboard
 
 from utils.misc import *
 from utils.dataset import *
+from utils.data import *
 
 
 def get_parameters():
@@ -57,6 +58,13 @@ if __name__ == '__main__':
     logger.info(args)
     logger.info('Loading datasets...')
     # get dataset
-    train_dataset = ShapeNetCore(path=args.dataset_path, cates=args.categories,split='train',scale_mode=args.scale_mode)
+    train_dataset = ShapeNetCore(path=args.dataset_path, cates=args.categories, split='train',
+                                 scale_mode=args.scale_mode)
+    val_dataset = ShapeNetCore(path=args.dataset_path, cates=args.categories, split='val',
+                               scale_mode=args.scale_mode)
+    train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=args.train_batch_size, num_workers=0))
 
-    # train
+    # Model
+    logger.info('Building model...')
+    
+
