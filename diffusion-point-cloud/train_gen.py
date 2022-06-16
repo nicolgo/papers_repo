@@ -4,12 +4,13 @@ import torch
 import torch.utils.tensorboard
 
 from utils.misc import *
+from utils.dataset import *
 
 
 def get_parameters():
     parser = argparse.ArgumentParser()
     # Dataset and loaders
-    parser.add_argument('--dataser_path', type=str, default='./data/shapenet.hdf5')
+    parser.add_argument('--dataset_path', type=str, default='./data/shapenet.hdf5')
     parser.add_argument('--categories', type=str_list, default=['airplane'])
     parser.add_argument('--scale_mode', type=str, default='shape_unit')
     parser.add_argument('--train_batch_size', type=int, default=128)
@@ -56,5 +57,6 @@ if __name__ == '__main__':
     logger.info(args)
     logger.info('Loading datasets...')
     # get dataset
+    train_dataset = ShapeNetCore(path=args.dataset_path, cates=args.categories,split='train',scale_mode=args.scale_mode)
 
     # train
