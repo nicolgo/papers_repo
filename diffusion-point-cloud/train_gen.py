@@ -19,7 +19,7 @@ def get_parameters():
 
     # Model arguments
     parser.add_argument('--model', type=str, default='flow', choices=['flow', 'gaussian'])
-    parser.add_argument('--latent_dim', type=int, default=256)
+    parser.add_argument('--latent_dim', type=int, default=256) # pointnet encoder output
     parser.add_argument('--num_steps', type=int, default=100)
     parser.add_argument('--beta_1', type=float, default=1e-4)
     parser.add_argument('--beta_T', type=float, default=0.02)
@@ -66,5 +66,5 @@ if __name__ == '__main__':
 
     # Model
     logger.info('Building model...')
-    
+
 
