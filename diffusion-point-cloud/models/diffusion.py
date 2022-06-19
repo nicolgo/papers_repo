@@ -2,6 +2,7 @@ import torch
 from torch.nn import Module, ModuleList
 import numpy as np
 import torch.nn.functional as F
+from common import *
 
 
 class VarianceSchedule(Module):
@@ -51,11 +52,33 @@ class PointwiseNet(Module):
         super().__init__()
         self.act = F.leaky_relu
         self.residual = residual
-        self.layers = ModuleList([])
+        self.layers = ModuleList([
+            ConcatSquashLinear(3, 128, context_dim + 3),
+            ConcatSquashLinear(128, 256, context_dim + 3),
+            ConcatSquashLinear(256, 512, context_dim + 3),
+            ConcatSquashLinear(512, 256, context_dim + 3),
+            ConcatSquashLinear(256, 128, context_dim + 3),
+            ConcatSquashLinear(128, 3, context_dim + 3)
+        ])
 
     def forward(self, x, beta, context):
         batch_size = x.size(0)
         beta = beta.view(batch_size, 1, 1)
+        context = context.view(batch_size, 1, -1)
+
+        time_emb = torch.cat([beta, torch.sin(beta), torch.cos(beta)], dim=-1)
+        ctx_emb = torch.cat([time_emb, context], dim=-1)
+
+        out = x
+        for i, layer in enumerate(self.layers):
+            out = layer(ctx=ctx_emb, x=out)
+            if i < len(self.layers) - 1:
+                out = self.act(out)
+
+        if self.residual:
+            return x + out
+        else:
+            return out
 
 
 class DiffusionPoint(Module):
@@ -82,3 +105,27 @@ class DiffusionPoint(Module):
 
     def sample(self, num_points, context, point_dim=3, flexibility=0.0, ret_traj=False):
         batch_size = context.size(0)
+        x_T = torch.randn([batch_size, num_points, point_dim]).to(context.device)
+        traj = {self.var_sched.num_steps: x_T}
+        for t in range(self.var_sched.num_steps, 0, -1):
+            z = torch.randn_like(x_T) if t > 1 else torch.zeros_like(x_T)
+            alpha = self.var_sched.alphas[t]
+            alpha_bar = self.var_sched.alphas_bars[t]
+            sigma = self.var_sched.get_sigmas(t, flexibility)
+
+            c0 = 1.0 / torch.sqrt(alpha)
+            c1 = (1 - alpha) / torch.sqrt(1 - alpha_bar)
+
+            x_t = traj[t]
+            beta = self.var_sched.betas[[t] * batch_size]
+            e_theta = self.net(x_t, beta=beta, context=context)
+            x_next = c0 * (x_t - c1 * e_theta) + sigma * z
+            traj[t - 1] = x_next.detach()
+            traj[t] = traj[t].cpu()
+            if not ret_traj:
+                del traj[t]
+
+        if ret_traj:
+            return traj
+        else:
+            return traj[0]
