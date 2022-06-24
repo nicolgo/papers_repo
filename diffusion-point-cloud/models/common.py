@@ -1,5 +1,18 @@
 import torch
+import numpy as np
 from torch.nn import Module, Linear
+
+
+def reparameterize_gaussian(mean, logvar):
+    std = torch.exp(0.5 * logvar)
+    eps = torch.randn(std.size()).to(mean)
+    return mean + std * eps
+
+
+def gaussian_entropy(logvar):
+    first_term = 0.5 * float(logvar.size(1)) * (1 + np.log(np.pi * 2))
+    total = first_term + 0.5 * logvar.sum(dim=1, keepdim=False)
+    return total
 
 
 class ConcatSquashLinear(Module):
