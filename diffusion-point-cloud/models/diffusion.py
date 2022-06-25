@@ -89,7 +89,7 @@ class DiffusionPoint(Module):
 
     def get_loss(self, x_0, context, t=None):
         batch_size, _, point_dim = x_0.size()
-        if t == None:
+        if t is None:
             t = self.var_sched.uniform_sample_t(batch_size)
         alpha_bar = self.var_sched.alpha_bars[t]
         beta = self.var_sched.betas[t]

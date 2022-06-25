@@ -6,6 +6,8 @@ import numpy.random
 import torch
 import logging
 
+THOUSAND = 1000
+MILLION = 1000000
 
 class BlackHole(object):
     def __setattr__(self, key, value):
@@ -21,6 +23,33 @@ class BlackHole(object):
 class CheckpointManager(object):
     def __init__(self, save_dir, logger=BlackHole()):
         super().__init__()
+        os.makedirs(save_dir,exist_ok=True)
+        self.save_dir = save_dir
+        self.ckpts = []
+        self.logger - logger
+
+        for f in os.listdir(self.save_dir):
+            if f[:4] != 'ckpt':
+                continue
+        _, score, it = f.split('_')
+        it = it.split('.')[0]
+        self.ckpts.append({
+            'score': float(score),
+            'file': f,
+            'iteration': int(it),
+        })
+
+    def get_worst_ckpt_idx(self):
+        idx = -1
+        worst = float('-inf')
+        for i, ckpt in enumerate(self.ckpts):
+            if ckpt['score'] >= worst:
+                idx = i
+                worst = ckpt['score']
+        return idx if idx >= 0 else None
+
+
+
 
 
 def str_list(argstr):
