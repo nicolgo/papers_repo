@@ -1,7 +1,10 @@
 import argparse
+import math
 
 import torch
 import torch.utils.tensorboard
+from torch.nn.utils import clip_grad_norm_
+from tqdm.auto import tqdm
 
 from utils.misc import *
 from utils.dataset import *
@@ -29,15 +32,15 @@ def get_parameters():
     parser.add_argument('--beta_T', type=float, default=0.02)
 
     # Training
-    parser.add_argument('--seed', type=int, default=2020) # reproduce same result
+    parser.add_argument('--seed', type=int, default=2020)  # reproduce same result
     parser.add_argument('--logging', type=eval, default=True, choices=[True, False])
     parser.add_argument('--log_root', type=str, default='./logs_gen')
-    parser.add_argument('--tag', type=str, default=None) # log tag
-    parser.add_argument('--device',type=str,default='cuda')
-    parser.add_argument('--max_iters',type=int,default=float('inf'))
-    parser.add_argument('--val_freq',type=int,default=1000)
-    parser.add_argument('--test_freq',type=int, default=30*THOUSAND)
-    parser.add_argument('--test_size',type=int,default=400)
+    parser.add_argument('--tag', type=str, default=None)  # log tag
+    parser.add_argument('--device', type=str, default='cuda')
+    parser.add_argument('--max_iters', type=int, default=float('inf'))
+    parser.add_argument('--val_freq', type=int, default=1000)
+    parser.add_argument('--test_freq', type=int, default=30 * THOUSAND)
+    parser.add_argument('--test_size', type=int, default=400)
 
     # Optimizer and scheduler
     parser.add_argument('--lr', type=float, default=2e-3)
@@ -64,14 +67,62 @@ def setting_logger(args):
     return logger, writer, ckpt_mgr
 
 
-def train(it):
-    pass
+def train(model, args, optimizer, scheduler, train_iter, it, writer):
+    # Load data
+    batch = next(train_iter)
+    x = batch['pointcloud'].to(args.device)
 
-def validate_inspect(it):
-    pass
+    # Reset grad and model state
+    optimizer.zero_grad()
+    model.train()
+
+    # Forward
+    kl_weight = args.kl_weight
+    loss = model.get_loss(x, kl_weight=kl_weight, writer=writer, it=it)
+
+    # Backward and optimize
+    loss.backward()
+    orig_grad_norm = clip_grad_norm_(model.parameters(), args.max_grad_norm)
+    optimizer.step()
+    scheduler.step()
+
+    logger.info('[Train] Iter %04d | Loss %.6f | Grad %.4f | KLWeight %.4f' % (
+        it, loss.item(), orig_grad_norm, kl_weight
+    ))
+
+    writer.add_scalar('train/loss', loss, it)
+    writer.add_scalar('train/kl_weight', kl_weight, it)
+    writer.add_scalar('train/lr', optimizer.param_groups[0]['lr'], it)
+    writer.add_scalar('train/grad_norm', orig_grad_norm, it)
+
+
+def validate_inspect(args, model, it, writter, logger):
+    z = torch.randn([args.num_samples, args.latent_dim]).to(args.device)
+    x = model.sample(z, args.sample_num_points, flexibility=args.flexibility)
+    writer.add_mesh('val/pointcloud', x, global_step=it)
+    writer.flush()
+    logger.info(['[Inspect] Generating samples...'])
+
 
 def test(it):
-    pass
+    ref_pcs = []
+    for i, data in enumerate(val_dataset):
+        if i >= args.test_size:
+            break
+        ref_pcs.append(data['pointcloud'].unsqueeze(0))
+    ref_pcs = torch.cat(ref_pcs, dim=0)
+
+    gen_pcs = []
+    for i in tqdm(range(0,math.ceil(args.test_size/args.val_batch_size)),'Generate'):
+        with torch.no_grad():
+            z = torch.randn([args.val_batch_size,args.latent_dim]).to(args.device)
+            x = model.sample(z,args.sample_num_points, flexibility=args.flexibility)
+            gen_pcs.append(x.detach().cpu())
+    gen_pcs = torch.cat(gen_pcs, dim=0)[:args.test_size]
+
+    with torch.no_grad():
+        results = compute_all_metrics(gen_pcs.to(args.device),ref_pcs.to(args.device),args.val_batch_size)
+
 
 if __name__ == '__main__':
     # get parameters
@@ -107,16 +158,17 @@ if __name__ == '__main__':
     try:
         it = 1
         while it <= args.max_iters:
-            train(it)
+            # train(it)
+            train(model, args, optimizer, scheduler, train_iter, it, writer)
             if it % args.val_freq == 0 or it == args.max_iters:
                 validate_inspect(it)
                 opt_states = {
                     'optimizer': optimizer.state_dict(),
                     'scheduler': scheduler.state_dict(),
                 }
+                ckpt_mgr.save(model, args, 0, others=opt_states, step=it)
             if it % args.test_freq == 0 or it == args.max_iters:
                 test(it)
             it += 1
     except KeyboardInterrupt:
         logger.info('Terminating...')
-
