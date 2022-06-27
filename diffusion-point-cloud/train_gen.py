@@ -13,6 +13,7 @@ from models.vae_flow import *
 from models.vae_gaussian import *
 from models.flow import *
 from models.diffusion import *
+from evaluation import *
 
 
 def get_parameters():
@@ -101,7 +102,7 @@ def validate_inspect(args, model, it, writter, logger):
     x = model.sample(z, args.sample_num_points, flexibility=args.flexibility)
     writer.add_mesh('val/pointcloud', x, global_step=it)
     writer.flush()
-    logger.info(['[Inspect] Generating samples...'])
+    logger.info('[Inspect] Generating samples...')
 
 
 def test(it):
@@ -122,6 +123,17 @@ def test(it):
 
     with torch.no_grad():
         results = compute_all_metrics(gen_pcs.to(args.device),ref_pcs.to(args.device),args.val_batch_size)
+        results = {k:v.item() for k, v in results.items()}
+        jsd = jsd_between_point_cloud_sets(gen_pcs.cpu().numpy(), ref_pcs.cpu().numpy())
+        results['jsd'] = jsd
+
+    # CD related metrics
+    writer.add_scalar('test/Coverage_CD', results['lgan_cov-CD'], global_step=it)
+    writer.add_scalar('test/MMD_CD', results['lgan_mmd-CD'], global_step=it)
+    writer.add_scalar('test/1NN_CD', results['1-NN-CD-acc'], global_step=it)
+
+    writer.add_scalar('test/JSD',results['jsd'],global_step=it)
+
 
 
 if __name__ == '__main__':
