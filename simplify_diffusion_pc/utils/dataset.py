@@ -152,14 +152,14 @@ if __name__ == "__main__":
     from torch.utils.data import DataLoader
 
     data_set = ShapeNet(path='../data/shapenet.hdf5', categories=['airplane'], split='train', scale_mode='shape_unit')
-    cloud_iter = get_data_iterator(DataLoader(data_set, batch_size=1, num_workers=0))
+    cloud_iter = get_data_iterator(DataLoader(data_set, batch_size=2, num_workers=0))
     batch = next(cloud_iter)
     x = batch['point_cloud']
 
     data_set2 = ShapeNet(path='../data/shapenet.hdf5', categories=['airplane'], split='train', scale_mode='original')
-    cloud_iter2 = get_data_iterator(DataLoader(data_set, batch_size=1, num_workers=0))
-    batch = next(cloud_iter2)
-    x2 = batch['point_cloud']
+    cloud_iter2 = get_data_iterator(DataLoader(data_set2, batch_size=2, num_workers=0))
+    batch2 = next(cloud_iter2)
+    x2 = batch2['point_cloud']
 
     cloud_list = []
     pcl = o3d.geometry.PointCloud()
