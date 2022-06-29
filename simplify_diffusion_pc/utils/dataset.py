@@ -47,7 +47,7 @@ synsetid_to_cate = {
 cate_to_synsetid = {v: k for k, v in synsetid_to_cate.items()}
 
 
-class ShapeNet(Dataset):
+class ShapeNetData(Dataset):
     def __init__(self, path, categories, split, scale_mode, transform=None):
         self.split_types = ('train', 'val', 'test')
         self.path = path
@@ -151,12 +151,12 @@ def get_data_iterator(iterable):
 if __name__ == "__main__":
     from torch.utils.data import DataLoader
 
-    data_set = ShapeNet(path='../data/shapenet.hdf5', categories=['airplane'], split='train', scale_mode='shape_unit')
+    data_set = ShapeNetData(path='../data/shapenet.hdf5', categories=['airplane'], split='train', scale_mode='shape_unit')
     cloud_iter = get_data_iterator(DataLoader(data_set, batch_size=2, num_workers=0))
     batch = next(cloud_iter)
     x = batch['point_cloud']
 
-    data_set2 = ShapeNet(path='../data/shapenet.hdf5', categories=['airplane'], split='train', scale_mode='original')
+    data_set2 = ShapeNetData(path='../data/shapenet.hdf5', categories=['airplane'], split='train', scale_mode='original')
     cloud_iter2 = get_data_iterator(DataLoader(data_set2, batch_size=2, num_workers=0))
     batch2 = next(cloud_iter2)
     x2 = batch2['point_cloud']
