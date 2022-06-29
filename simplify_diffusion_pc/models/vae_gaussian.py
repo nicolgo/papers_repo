@@ -20,7 +20,7 @@ class GaussianVAE(Module):
         # get KL by diffusion
 
         # get KL of second item.
-        
+
         pass
 
     def sample(self):

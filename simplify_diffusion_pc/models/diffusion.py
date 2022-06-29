@@ -3,6 +3,15 @@ import torch.nn.functional as F
 from torch.nn import Module, Parameter, ModuleList, Linear
 
 
+class VarianceSchedule(Module):
+    def __init__(self):
+        super().__init__()
+        self.num_steps = 100
+        self.beta = torch.linspace(0.0001, 0.02, self.num_steps)
+        self.alpha = 1. - self.beta
+        self.alpha_bar = torch.cumprod(self.alpha, dim=0)
+
+
 class ConcatSquashLinear(Module):
     def __init__(self, dim_in, dim_out, dim_ctx):
         super().__init__()
@@ -25,7 +34,13 @@ class PointWiseNet(Module):
 
 class DiffusionPoint(Module):
     def __init__(self):
-        pass
+        super().__init__()
+        self.num_steps = 100
+        self.beta = torch.linspace(0.0001, 0.02, self.num_steps)
+        # add zero to make x(t=0) == x0
+        self.beta = torch.cat([torch.zeros([1]), self.beta], dim=0)
+        self.alpha = 1. - self.beta
+        self.alpha_bar = torch.cumprod(self.alpha, dim=0)
 
     def forward(self):
         pass
@@ -33,11 +48,12 @@ class DiffusionPoint(Module):
     def get_loss(self):
         pass
 
+    def diffusion_process(self, x_0: torch.Tensor):
+        noise = torch.randn_like(x_0)
+        alpha_bar_sqrt = torch.sqrt(self.alpha_bar).view(-1, 1, 1)
+        one_minus_alpha_bar_sqrt = torch.sqrt(1 - self.alpha_bar).view(-1, 1, 1)
+        x_0_t = alpha_bar_sqrt * x_0 + one_minus_alpha_bar_sqrt * noise
+        return x_0_t
 
-if __name__ == "__main__":
-    layer = ConcatSquashLinear(3, 128, 128 + 3)
-
-    x = torch.randn(2, 2048, 3)
-    z = torch.rand(2, 131)
-    y = layer(z, x)
-    pass
+    def reverse_sample(self):
+        pass
