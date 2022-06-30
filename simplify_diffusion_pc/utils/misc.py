@@ -3,6 +3,8 @@ import time
 import logging
 import logging.handlers
 
+THOUSAND = 1000
+MILLION = 1000000
 
 def get_new_log_dir(root='./logs', postfix='', prefix=''):
     log_dir = os.path.join(root, prefix + time.strftime('%Y_%m_%d__%H_%M_%S', time.localtime()) + postfix)
