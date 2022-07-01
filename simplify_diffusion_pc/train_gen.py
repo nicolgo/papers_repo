@@ -11,7 +11,7 @@ from models.vae_gaussian import *
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset_path', type=str, default='./data/shapenet.hdf5')
 parser.add_argument('--scale_mode', type=str, default='shape_unit')
-parser.add_argument('--train_batch_size', type=int, default=128)
+parser.add_argument('--train_batch_size', type=int, default=2)
 parser.add_argument('--val_batch_size', type=int, default=64)
 
 # Model arguments
@@ -34,6 +34,7 @@ parser.add_argument('--test_freq', type=int, default=30 * THOUSAND)
 parser.add_argument('--test_size', type=int, default=400)
 
 args = parser.parse_args()
+args.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 ## Initialize the logger
 log_dir = get_new_log_dir('./logs_gen', prefix='GEN_', postfix='')
@@ -74,7 +75,7 @@ def train(iteration_id):
     optimizer.step()
     scheduler.step()
     # record training info
-    logger.info()
+    logger.info('[Train] Iter %04d | Loss %.6f | Grad %.4f ' % ( iteration_id, loss.item(), orig_grad_norm))
     pass
 
 

@@ -12,7 +12,7 @@ class GaussianVAE(Module):
         self.z_log_var = None
         self.loss_reverse = None
         self.encoder = PointNetEncoder(args.latent_dim)
-        self.diffusion = DiffusionPoint(z_dim=args.latent_dim)
+        self.diffusion = DiffusionPoint(z_dim=args.latent_dim,device=args.device)
 
     def forward(self, x):
         z_mean, self.z_log_var = self.encoder(x)

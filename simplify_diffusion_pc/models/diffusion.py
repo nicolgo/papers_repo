@@ -36,8 +36,8 @@ class PointWiseNet(Module):
 
     def forward(self, x, beta, z_context):
         batch_size = x.size(0)
-        beta = beta.view(batch_size, 1, 1)
-        z_context = z_context.view(batch_size, 1, 1)
+        beta = beta.view(batch_size, 1, 1) # (B, 1, 1)
+        z_context = z_context.view(batch_size, 1, -1) # (B, 1, z_dim)
 
         beta_with_z = torch.cat([beta, torch.sin(beta), torch.cos(beta), z_context], dim=-1)
 
@@ -54,15 +54,22 @@ class PointWiseNet(Module):
 
 
 class DiffusionPoint(Module):
-    def __init__(self, z_dim):
+    def __init__(self, z_dim, device):
         super().__init__()
         self.num_steps = 100
-        self.beta = torch.linspace(0.0001, 0.02, self.num_steps)
-        self.beta = torch.cat([torch.zeros([1]), self.beta], dim=0)  # add zero to make x(t=0) == x0
-        self.alpha = 1. - self.beta
+        self.betas = torch.linspace(0.0001, 0.02, self.num_steps)
+        self.betas = torch.cat([torch.zeros([1]), self.betas], dim=0).to(device)  # add zero to make x(t=0) == x0
+        self.alpha = 1. - self.betas
         self.alpha_bar = torch.cumprod(self.alpha, dim=0)
         self.alpha_bar_sqrt = torch.sqrt(self.alpha_bar).view(-1, 1, 1)
         self.one_minus_alpha_bar_sqrt = torch.sqrt(1 - self.alpha_bar).view(-1, 1, 1)
+
+        # self.register_buffer('betas', self.betas)
+        # self.register_buffer('alphas', self.alpha)
+        # self.register_buffer('my_alpha_bar', self.alpha_bar)
+        # self.register_buffer('my_alpha_bar_sqrt', self.alpha_bar_sqrt)
+        # self.register_buffer('my_one_minus_alpha_bar_sqrt', self.one_minus_alpha_bar_sqrt)
+
         # define network
         self.net = PointWiseNet(z_context_dim=z_dim, residual=True)
 
@@ -77,9 +84,11 @@ class DiffusionPoint(Module):
         t_batches = self.sample_t_randomly(batch_size=batch_size)
         mean = self.alpha_bar_sqrt[t_batches].view(-1, 1, 1)
         delta = self.one_minus_alpha_bar_sqrt[t_batches].view(-1, 1, 1)
-        x_t = mean * x_0 + delta * noise
 
-        noise_theta = self.net(x_t, beta=self.beta, z_context=z_context)
+        x_t = mean * x_0 + delta * noise
+        beta = self.betas[t_batches]
+
+        noise_theta = self.net(x_t, beta=beta, z_context=z_context)
 
         loss = F.mse_loss(noise.view(-1, 3), noise_theta.view(-1, 3), reduction='mean')
         return loss
