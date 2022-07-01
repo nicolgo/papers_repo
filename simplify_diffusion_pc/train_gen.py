@@ -46,7 +46,7 @@ val_dataset = ShapeNetData(path=args.dataset_path, categories=['airplane'], spli
 train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=args.train_batch_size, num_workers=0))
 
 logger.info('create model')
-model = GaussianVAE(args)
+model = GaussianVAE(args).to(args.device)
 # model.eval()
 # x = (next(train_iter))['point_cloud']
 # writer.add_graph(model, x)
@@ -61,11 +61,9 @@ scheduler = get_linear_scheduler(optimizer, start_epoch=args.sched_start_epoch, 
 
 def train(iteration_id):
     x = (next(train_iter))['point_cloud'].to(args.device)
-
     # Reset grad and model state
     optimizer.zero_grad()
     model.train()
-
     # Forward Process
     model(x)
     # Loss
