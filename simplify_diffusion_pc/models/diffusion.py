@@ -121,5 +121,17 @@ class DiffusionPoint(Module):
         else:
             return traj[0]
 
-    def reverse_with_x0_xt(self, x0: torch.Tensor):
-        pass
+    def reverse_with_x0_xt(self, x_0: torch.Tensor):
+        noise = torch.randn_like(x_0)
+        x_0_t = self.alpha_bar_sqrt * x_0 + self.one_minus_alpha_bar_sqrt * noise
+        traj = {self.num_steps: x_0_t[self.num_steps]}
+        for t in range(self.num_steps, 0, -1):
+            x_t = traj[t]
+            c1 = (self.alpha_bar_sqrt[t - 1] * self.betas[t]) / (1. - self.alpha_bar[t])
+            c2 = (torch.sqrt(self.alpha[t]) * (1 - self.alpha_bar[t - 1])) / (1. - self.alpha_bar[t])
+            epsilon = torch.randn_like(x_t)
+            x_before = c1 * x_0 + c2 * x_t + self.gamma[t] * epsilon
+            traj[t - 1] = x_before.detach()
+            traj[t] = traj[t].cpu()
+
+        return traj

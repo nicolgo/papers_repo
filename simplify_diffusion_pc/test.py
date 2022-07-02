@@ -6,11 +6,7 @@ from models.diffusion import *
 import time
 
 
-def show_diffusion_process(x):
-    diffusion_model = DiffusionPoint()
-    x_0_t = diffusion_model.diffusion_process(x)
-
-    # visualize the diffusion process of point cloud
+def show_diffusion_process(x_0_t):
     vis = o3d.visualization.Visualizer()
     vis.create_window()
     pcl = o3d.geometry.PointCloud()
@@ -27,12 +23,19 @@ def show_diffusion_process(x):
 
 
 if __name__ == "__main__":
-    ts = np.random.choice(np.arange(1, 100 + 1), 5)
-    print(ts.tolist())
     train_dataset = ShapeNetData(path='./data/shapenet.hdf5', categories=['airplane'], split='train',
                                  scale_mode='shape_unit')
     train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=1, num_workers=0))
     batch = next(train_iter)
     x = batch['point_cloud']
+    diffusion_model = DiffusionPoint()
+    x_0_t = diffusion_model.diffusion_process(x)
+    temp = x_0_t[1]
+    show_diffusion_process(x_0_t)
 
-    show_diffusion_process(x)
+    # reverse diffusion process
+    x_t_0 = diffusion_model.reverse_with_x0_xt(x)
+    show_list = []
+    for key, value in x_t_0.items():
+        show_list.append(x_t_0[key].squeeze(dim=0))
+    show_diffusion_process(show_list)
