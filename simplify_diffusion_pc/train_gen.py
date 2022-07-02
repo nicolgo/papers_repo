@@ -1,5 +1,7 @@
 import argparse
+import math
 
+from tqdm.auto import tqdm
 import torch.utils.tensorboard
 import torch
 from torch.utils.data import dataset, DataLoader
@@ -16,6 +18,7 @@ parser.add_argument('--val_batch_size', type=int, default=64)
 
 # Model arguments
 parser.add_argument('--latent_dim', type=int, default=256)
+parser.add_argument('--truncate_std', type=float, default=2.0)
 
 # Optimizer and scheduler
 parser.add_argument('--lr', type=float, default=2e-3)
@@ -80,7 +83,9 @@ def train(iteration_id):
 
 
 def validate_inspect(iteration_id):
-    pass
+    z_context = torch.randn([args.num_samples, args.latent_dim]).to(args.device)
+    x = model.sample(z,args.sample_num_points)
+
 
 
 def test(iteration_id):
@@ -92,8 +97,10 @@ def test(iteration_id):
     ref_pcs = torch.cat(ref_pcs, dim=0)
 
     gen_pcs = []
+    for i in tqdm(range(0,math.ceil(args.test_size/args.val_batch_size)),'Generate'):
+        with torch.no_grad():
+            pass
 
-    pass
 
 
 if __name__ == '__main__':

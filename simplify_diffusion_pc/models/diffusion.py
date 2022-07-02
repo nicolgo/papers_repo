@@ -36,8 +36,8 @@ class PointWiseNet(Module):
 
     def forward(self, x, beta, z_context):
         batch_size = x.size(0)
-        beta = beta.view(batch_size, 1, 1) # (B, 1, 1)
-        z_context = z_context.view(batch_size, 1, -1) # (B, 1, z_dim)
+        beta = beta.view(batch_size, 1, 1)  # (B, 1, 1)
+        z_context = z_context.view(batch_size, 1, -1)  # (B, 1, z_dim)
 
         beta_with_z = torch.cat([beta, torch.sin(beta), torch.cos(beta), z_context], dim=-1)
 
@@ -54,7 +54,7 @@ class PointWiseNet(Module):
 
 
 class DiffusionPoint(Module):
-    def __init__(self, z_dim, device):
+    def __init__(self, z_dim=256, device=torch.device('cpu')):
         super().__init__()
         self.num_steps = 100
         self.betas = torch.linspace(0.0001, 0.02, self.num_steps)
@@ -98,5 +98,8 @@ class DiffusionPoint(Module):
         x_0_t = self.alpha_bar_sqrt * x_0 + self.one_minus_alpha_bar_sqrt * noise
         return x_0_t
 
-    def reverse_sample(self):
+    def reverse_sample(self, num_points, z_context):
+        for t in range(self.num_steps, 0, -1):
+            mu = 1./
+            pass
         pass

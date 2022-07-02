@@ -21,6 +21,19 @@ def standard_normal_logprob(z):
     return log_z - z.pow(2) / 2
 
 
+def truncated_normal_(tensor, mean=0, std=1, trunc_std=2):
+    """
+    Taken from https://discuss.pytorch.org/t/implementing-truncated-normal-initializer/4778/15
+    """
+    size = tensor.shape
+    tmp = tensor.new_empty(size + (4,)).normal_()
+    valid = (tmp < trunc_std) & (tmp > -trunc_std)
+    ind = valid.max(-1, keepdim=True)[1]
+    tensor.data.copy_(tmp.gather(-1, ind).squeeze(-1))
+    tensor.data.mul_(std).add_(mean)
+    return tensor
+
+
 def get_linear_scheduler(optimizer, start_epoch, end_epoch, start_lr, end_lr):
     def lr_func(epoch):
         if epoch <= start_epoch:
