@@ -13,12 +13,14 @@ from models.vae_gaussian import *
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset_path', type=str, default='./data/shapenet.hdf5')
 parser.add_argument('--scale_mode', type=str, default='shape_unit')
-parser.add_argument('--train_batch_size', type=int, default=2)
+parser.add_argument('--train_batch_size', type=int, default=4)
 parser.add_argument('--val_batch_size', type=int, default=64)
 
 # Model arguments
 parser.add_argument('--latent_dim', type=int, default=256)
 parser.add_argument('--truncate_std', type=float, default=2.0)
+parser.add_argument('--num_samples', type=int, default=4)
+parser.add_argument('--sample_num_points', type=int, default=2048)
 
 # Optimizer and scheduler
 parser.add_argument('--lr', type=float, default=2e-3)
@@ -51,10 +53,11 @@ train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=args.train_b
 
 logger.info('create model')
 model = GaussianVAE(args).to(args.device)
-# model.eval()
-# x = (next(train_iter))['point_cloud']
-# writer.add_graph(model, x)
-# writer.flush()
+model.eval()
+x = (next(train_iter))['point_cloud'].to(args.device)
+writer.add_graph(model, x)
+writer.flush()
+# model = model.to(args.device)
 logger.info(repr(model))
 
 # optimizer & scheduler
@@ -78,14 +81,17 @@ def train(iteration_id):
     optimizer.step()
     scheduler.step()
     # record training info
-    logger.info('[Train] Iter %04d | Loss %.6f | Grad %.4f ' % ( iteration_id, loss.item(), orig_grad_norm))
+    logger.info('[Train] Iter %04d | Loss %.6f | Grad %.4f ' % (iteration_id, loss.item(), orig_grad_norm))
     pass
 
 
 def validate_inspect(iteration_id):
     z_context = torch.randn([args.num_samples, args.latent_dim]).to(args.device)
-    x = model.sample(z,args.sample_num_points)
+    gen_pts = model.sample(z_context, args.sample_num_points)
 
+    logger.info('[Inspect] Generating samples...')
+    writer.add_mesh('val/point_cloud', gen_pts, global_step=iteration_id)
+    writer.flush()
 
 
 def test(iteration_id):
@@ -97,10 +103,9 @@ def test(iteration_id):
     ref_pcs = torch.cat(ref_pcs, dim=0)
 
     gen_pcs = []
-    for i in tqdm(range(0,math.ceil(args.test_size/args.val_batch_size)),'Generate'):
+    for i in tqdm(range(0, math.ceil(args.test_size / args.val_batch_size)), 'Generate'):
         with torch.no_grad():
             pass
-
 
 
 if __name__ == '__main__':

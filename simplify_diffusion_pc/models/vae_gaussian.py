@@ -18,6 +18,7 @@ class GaussianVAE(Module):
         z_mean, self.z_log_var = self.encoder(x)
         self.z = reparameterize_gaussian(z_mean, self.z_log_var)
         self.loss_reverse = self.diffusion(x, self.z)
+        return self.z, self.loss_reverse
 
     def get_loss(self, kl_weight=0.001):
         # TODO: why the expectation did not calculate mean?

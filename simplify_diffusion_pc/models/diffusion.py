@@ -64,18 +64,18 @@ class DiffusionPoint(Module):
         self.alpha_bar_sqrt = torch.sqrt(self.alpha_bar).view(-1, 1, 1)
         self.one_minus_alpha_bar_sqrt = torch.sqrt(1 - self.alpha_bar).view(-1, 1, 1)
 
-        # self.register_buffer('betas', self.betas)
-        # self.register_buffer('alphas', self.alpha)
-        # self.register_buffer('my_alpha_bar', self.alpha_bar)
-        # self.register_buffer('my_alpha_bar_sqrt', self.alpha_bar_sqrt)
-        # self.register_buffer('my_one_minus_alpha_bar_sqrt', self.one_minus_alpha_bar_sqrt)
+        self.gamma = torch.zeros_like(self.betas)
+        for t in range(1, self.betas.size(0)):
+            self.gamma[t] = ((1 - self.alpha_bar[t - 1]) / (1 - self.alpha_bar[t])) * self.betas[t]
+        self.gamma = torch.sqrt(self.gamma)
 
         # define network
         self.net = PointWiseNet(z_context_dim=z_dim, residual=True)
 
     def sample_t_randomly(self, batch_size):
-        ts = np.random.choice(np.arange(1, self.num_steps + 1), batch_size)
-        return ts.tolist()
+        # ts = np.random.choice(np.arange(1, self.num_steps + 1), batch_size)
+        # return ts.tolist()
+        return torch.randint(1, self.num_steps + 1, (batch_size,))
 
     def forward(self, x_0, z_context):
         batch_size, _, point_dim = x_0.size()
@@ -98,8 +98,28 @@ class DiffusionPoint(Module):
         x_0_t = self.alpha_bar_sqrt * x_0 + self.one_minus_alpha_bar_sqrt * noise
         return x_0_t
 
-    def reverse_sample(self, num_points, z_context):
+    def reverse_sample(self, num_points, z_context, ret_traj=False):
+        batch_size = z_context.size(0)
+        x_t = torch.randn([z_context.size(0), num_points, 3]).to(z_context.device)
+        traj = {self.num_steps: x_t}
         for t in range(self.num_steps, 0, -1):
-            mu = 1./
-            pass
+            x_t = traj[t]
+            beta = self.betas[[t] * batch_size]
+            e_theta = self.net(x_t, beta=beta, z_context=z_context)
+
+            c0 = 1. / torch.sqrt(self.alpha[t])
+            c1 = self.betas[t] / torch.sqrt(1 - self.alpha_bar[t])
+            epsilon = torch.randn_like(x_t)
+            x_before = c0 * (x_t - c1 * e_theta) + self.gamma[t] * epsilon
+            traj[t - 1] = x_before.detach()
+            traj[t] = traj[t].cpu()
+            if not ret_traj:
+                del traj[t]
+
+        if ret_traj:
+            return traj
+        else:
+            return traj[0]
+
+    def reverse_with_x0_xt(self, x0: torch.Tensor):
         pass

@@ -27,6 +27,8 @@ def show_diffusion_process(x):
 
 
 if __name__ == "__main__":
+    ts = np.random.choice(np.arange(1, 100 + 1), 5)
+    print(ts.tolist())
     train_dataset = ShapeNetData(path='./data/shapenet.hdf5', categories=['airplane'], split='train',
                                  scale_mode='shape_unit')
     train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=1, num_workers=0))
