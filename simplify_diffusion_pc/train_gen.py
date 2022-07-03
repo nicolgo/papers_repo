@@ -127,7 +127,7 @@ def test(iteration_id):
     # evaluation
     with torch.no_grad():
         results = compute_all_metrics(gen_pcs.to(args.device), ref_pcs.to(args.device), args.val_batch_size)
-        results = {k: v.items() for k, v in results.items()}
+        results = {k: v.item() for k, v in results.items()}
         jsd = jsd_between_point_cloud_sets(gen_pcs.cpu().numpy(), ref_pcs.cpu().numpy())
         results['jsd'] = jsd
 
