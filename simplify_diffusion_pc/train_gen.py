@@ -46,6 +46,7 @@ args.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 log_dir = get_new_log_dir('./logs_gen', prefix='GEN_', postfix='')
 logger = get_logger('train', log_dir)
 writer = torch.utils.tensorboard.SummaryWriter(log_dir)
+ckpt_mgr = CheckpointManager(log_dir)
 
 logger.info('Loading dataset...')
 train_dataset = ShapeNetData(path=args.dataset_path, categories=['airplane'], split='train', scale_mode=args.scale_mode)
@@ -139,6 +140,12 @@ if __name__ == '__main__':
             train(i)
             if i % args.val_freq == 0:
                 validate_inspect(i)
+                opt_states = {
+                    'optimizer': optimizer.state_dict(),
+                    'scheduler': scheduler.state_dict(),
+                }
+                # save args & model & optimizer & scheduler
+                ckpt_mgr.save(model, args, score=0, others=opt_states, step=i)
             if i % args.test_freq == 0:
                 test(i)
             i += 1

@@ -3,6 +3,7 @@ import time
 import logging
 import logging.handlers
 import torch
+from tqdm.auto import tqdm
 
 THOUSAND = 1000
 MILLION = 1000000
@@ -129,3 +130,23 @@ class CheckpointManager(object):
     def load_selected(self, file):
         ckpt = torch.load(os.path.join(self.save_dir, file))
         return ckpt
+
+
+def normalize_point_clouds(pcs, mode, logger):
+    if mode is None:
+        logger.info('Will not normalize point clouds.')
+        return pcs
+    logger.info('Normalization mode: %s' % mode)
+    for i in tqdm(range(pcs.size(0)), desc='Normalize'):
+        pc = pcs[i]
+        if mode == 'shape_unit':
+            shift = pc.mean(dim=0).reshape(1, 3)
+            scale = pc.flatten().std().reshape(1, 1)
+        elif mode == 'shape_bbox':
+            pc_max, _ = pc.max(dim=0, keepdim=True)  # (1, 3)
+            pc_min, _ = pc.min(dim=0, keepdim=True)  # (1, 3)
+            shift = ((pc_min + pc_max) / 2).view(1, 3)
+            scale = (pc_max - pc_min).max().reshape(1, 1) / 2
+        pc = (pc - shift) / scale
+        pcs[i] = pc
+    return pcs
