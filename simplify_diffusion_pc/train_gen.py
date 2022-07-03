@@ -9,6 +9,7 @@ from torch.nn.utils import clip_grad_norm_
 from utils.misc import *
 from utils.dataset import *
 from models.vae_gaussian import *
+from models.vae_flow import *
 from evaluation import *
 
 parser = argparse.ArgumentParser()
@@ -18,10 +19,14 @@ parser.add_argument('--train_batch_size', type=int, default=64)
 parser.add_argument('--val_batch_size', type=int, default=64)
 
 # Model arguments
+parser.add_argument('--model_type', type=str, default='flow', choices=['flow', 'gaussian'])
 parser.add_argument('--latent_dim', type=int, default=256)
 parser.add_argument('--truncate_std', type=float, default=2.0)
 parser.add_argument('--num_samples', type=int, default=6)
 parser.add_argument('--sample_num_points', type=int, default=2048)
+# Flow Model arguments
+parser.add_argument('--latent_flow_depth', type=int, default=14)
+parser.add_argument('--latent_flow_hidden_dim', type=int, default=256)
 
 # Optimizer and scheduler
 parser.add_argument('--lr', type=float, default=2e-3)
@@ -54,7 +59,12 @@ val_dataset = ShapeNetData(path=args.dataset_path, categories=['airplane'], spli
 train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=args.train_batch_size, num_workers=0))
 
 logger.info('create model')
-model = GaussianVAE(args).to(args.device)
+if args.model_type == 'gaussian':
+    model = GaussianVAE(args).to(args.device)
+else:
+    model = FlowVAE(args).to(args.device)
+
+# save and visualize the model
 model.eval()
 x = (next(train_iter))['point_cloud'].to(args.device)
 writer.add_graph(model, x)
@@ -86,6 +96,7 @@ def train(iteration_id):
     writer.add_scalar('train/loss', loss, iteration_id)
     writer.add_scalar('train/lr', optimizer.param_groups[0]['lr'], iteration_id)
     writer.add_scalar('train/grad_norm', orig_grad_norm, iteration_id)
+    writer.flush()
 
 
 def validate_inspect(iteration_id):
@@ -115,7 +126,7 @@ def test(iteration_id):
 
     # evaluation
     with torch.no_grad():
-        results = compute_all_metrics(gen_pcs(args.device), ref_pcs(args.device), args.val_batch_size)
+        results = compute_all_metrics(gen_pcs.to(args.device), ref_pcs.to(args.device), args.val_batch_size)
         results = {k: v.items() for k, v in results.items()}
         jsd = jsd_between_point_cloud_sets(gen_pcs.cpu().numpy(), ref_pcs.cpu().numpy())
         results['jsd'] = jsd
@@ -130,6 +141,7 @@ def test(iteration_id):
     writer.add_scalar('test/MMD_CD', results['lgan_mmd-CD'], global_step=iteration_id)
     writer.add_scalar('test/1NN_CD', results['1-NN-CD-acc'], global_step=iteration_id)
     writer.add_scalar('test/JSD', results['jsd'], global_step=iteration_id)
+    writer.flush()
 
 
 if __name__ == '__main__':
