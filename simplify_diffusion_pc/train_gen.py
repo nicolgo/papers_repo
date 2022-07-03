@@ -110,7 +110,7 @@ def test(iteration_id):
         with torch.no_grad():
             z_context = torch.randn([args.num_samples, args.latent_dim]).to(args.device)
             gen_pcl = model.sample(z_context, args.sample_num_points)
-            gen_pcs.append(gen_pcl.detach.cpu())
+            gen_pcs.append(gen_pcl.detach().cpu())
     gen_pcs = torch.cat(gen_pcs, dim=0)[:args.test_size]
 
     # evaluation
