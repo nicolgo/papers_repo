@@ -5,6 +5,7 @@ import torch
 from torch.utils.data import Dataset
 import open3d as o3d
 import numpy as np
+from torch.utils.data import DataLoader
 
 RANDOM_SEED = 2020
 
@@ -89,8 +90,6 @@ class ShapeNetData(Dataset):
                 for j, pc in enumerate(f[tmp_id][self.split]):
                     yield torch.from_numpy(pc), j, category
 
-        pcl = o3d.geometry.PointCloud()
-        pts_list = []
         with h5py.File(self.path, mode='r') as f:
             for pc, pc_id, category_name in _enumerate_point_clouds(f):
                 if self.scale_mode == 'global_unit':
@@ -148,30 +147,46 @@ def get_data_iterator(iterable):
             iterator = iterable.__iter__()
 
 
-if __name__ == "__main__":
-    from torch.utils.data import DataLoader
+def analysis_point_cloud(data_set):
+    my_pcl = []
+    for i, item in enumerate(data_set):
+        my_pcl.append(item['point_cloud'].unsqueeze(dim=0))
+    my_pcl = torch.cat(my_pcl, dim=0)
+    xyz_max = torch.amax(my_pcl, dim=(0, 1))
+    xyz_min = torch.amin(my_pcl, dim=(0, 1))
+    print(f"xyz_max is {xyz_max}, xyz_min is {xyz_min}")
+    return xyz_max, xyz_min
 
+
+def get_different_normalized_pcl(scale_mode):
     data_set = ShapeNetData(path='../data/shapenet.hdf5', categories=['airplane'], split='train',
-                            scale_mode='shape_unit')
+                            scale_mode=scale_mode)
+    analysis_point_cloud(data_set)
     cloud_iter = get_data_iterator(DataLoader(data_set, batch_size=2, num_workers=0))
     batch = next(cloud_iter)
     x = batch['point_cloud']
+    return x
 
-    data_set2 = ShapeNetData(path='../data/shapenet.hdf5', categories=['airplane'], split='train',
-                             scale_mode='original')
-    cloud_iter2 = get_data_iterator(DataLoader(data_set2, batch_size=2, num_workers=0))
-    batch2 = next(cloud_iter2)
-    x2 = batch2['point_cloud']
+if __name__ == "__main__":
+    x = get_different_normalized_pcl('shape_unit')
+    x2 = get_different_normalized_pcl('original')
+    x3 = get_different_normalized_pcl('shape_bbox')
 
     cloud_list = []
+    pcl_list = []
     pcl = o3d.geometry.PointCloud()
     pcl.points = o3d.utility.Vector3dVector(x[0])
     cloud_list.append(pcl)
+
     pcl2 = o3d.geometry.PointCloud()
     pcl2.points = o3d.utility.Vector3dVector(x2[0])
     cloud_list.append(pcl2)
+
+    # pcl3 = o3d.geometry.PointCloud()
+    # pcl3.points = o3d.utility.Vector3dVector(x3[0])
+    # cloud_list.append(pcl3)
+
     o3d.visualization.draw_geometries(cloud_list)
     pass
-
     # o3d.visualization.draw_geometries([pcl])
     # custom_draw_geometry(pcl)
