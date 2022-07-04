@@ -20,7 +20,7 @@ class GaussianVAE(Module):
         self.loss_reverse = self.diffusion(x, self.z)
         return self.z, self.loss_reverse
 
-    def get_loss(self, kl_weight=0.001):
+    def get_loss(self, kl_weight=0.001, writer=None, iteration_id=None):
         # TODO: why the expectation did not calculate mean?
         # (B,1) Monte Carlo method: (1/n)*sum(f(X)) = Ep[f(x)]
         log_pz = standard_normal_logprob(self.z).sum(dim=1)
@@ -30,6 +30,10 @@ class GaussianVAE(Module):
         loss_prior = (-log_pz - entropy).mean()
         loss = kl_weight * loss_prior + self.loss_reverse
         # record entropy/log_pz/loss_reverse
+        if writer is not None:
+            writer.add_scalar('train/loss_entropy', -entropy.mean(), iteration_id)
+            writer.add_scalar('train/loss_prior', -log_pz.mean(), iteration_id)
+            writer.add_scalar('train/loss_diffusion', self.loss_reverse, iteration_id)
         return loss
 
     def sample(self, z_context, num_points, truncate_std=None):

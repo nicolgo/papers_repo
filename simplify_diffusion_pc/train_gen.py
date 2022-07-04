@@ -84,7 +84,7 @@ def train(iteration_id):
     model.train()
     # Forward and Loss
     model(x0)
-    loss = model.get_loss()
+    loss = model.get_loss(writer=writer, iteration_id=iteration_id)
     # Backward and optimize
     loss.backward()
     orig_grad_norm = clip_grad_norm_(model.parameters(), args.max_grad_norm)
