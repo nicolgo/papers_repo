@@ -147,21 +147,21 @@ def get_data_iterator(iterable):
             iterator = iterable.__iter__()
 
 
-def analysis_point_cloud(data_set):
+def analysis_point_cloud(data_set,scale_mode=None):
     my_pcl = []
     for i, item in enumerate(data_set):
         my_pcl.append(item['point_cloud'].unsqueeze(dim=0))
     my_pcl = torch.cat(my_pcl, dim=0)
     xyz_max = torch.amax(my_pcl, dim=(0, 1))
     xyz_min = torch.amin(my_pcl, dim=(0, 1))
-    print(f"xyz_max is {xyz_max}, xyz_min is {xyz_min}")
+    print(f"for {scale_mode}, xyz_max is {xyz_max}, xyz_min is {xyz_min}")
     return xyz_max, xyz_min
 
 
 def get_different_normalized_pcl(scale_mode):
     data_set = ShapeNetData(path='../data/shapenet.hdf5', categories=['airplane'], split='train',
                             scale_mode=scale_mode)
-    analysis_point_cloud(data_set)
+    analysis_point_cloud(data_set,scale_mode)
     cloud_iter = get_data_iterator(DataLoader(data_set, batch_size=2, num_workers=0))
     batch = next(cloud_iter)
     x = batch['point_cloud']
