@@ -1,9 +1,11 @@
 import os.path
+import random
 import time
 import logging
 import logging.handlers
 import torch
 from tqdm.auto import tqdm
+import numpy as np
 
 THOUSAND = 1000
 MILLION = 1000000
@@ -150,3 +152,9 @@ def normalize_point_clouds(pcs, mode, logger):
         pc = (pc - shift) / scale
         pcs[i] = pc
     return pcs
+
+
+def seed_all(seed):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)

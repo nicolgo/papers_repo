@@ -46,7 +46,7 @@ parser.add_argument('--test_size', type=int, default=400)
 
 args = parser.parse_args()
 args.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
+seed_all(2022)  # give a value to get a reproducible result
 # Initialize the logger
 log_dir = get_new_log_dir('./logs_gen', prefix='GEN_', postfix='')
 logger = get_logger('train', log_dir)
