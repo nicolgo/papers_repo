@@ -11,10 +11,10 @@ class ConcatSquashLinear(Module):
         self._hyper_bias = Linear(dim_ctx, dim_out, bias=False)
         self._hyper_gate = Linear(dim_ctx, dim_out)
 
-    def forward(self, input, ctx):
+    def forward(self, x, ctx):
         gate = torch.sigmoid(self._hyper_gate(ctx))  # sigmoid(W2 * c + b2)
         bias = self._hyper_bias(ctx)  # W3 * c
-        out = self._layer(input)  # W1 * h(l) + b1
+        out = self._layer(x)  # W1 * h(l) + b1
         # h(l+1) = (W1 * h(l) + b1) * sigmoid(W2 * c + b2) + W3 * c
         ret = out * gate + bias
         return ret
@@ -43,7 +43,7 @@ class PointWiseNet(Module):
 
         out_put = x
         for i, layer in enumerate(self.layers):
-            out_put = layer(ctx=beta_with_z, input=out_put)
+            out_put = layer(ctx=beta_with_z, x=out_put)
             if i < (len(self.layers) - 1):
                 out_put = F.leaky_relu(out_put)
 
