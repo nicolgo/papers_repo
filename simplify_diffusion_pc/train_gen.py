@@ -65,10 +65,10 @@ else:
     model = FlowVAE(args).to(args.device)
 
 # save and visualize the model
-# model.eval()
-# x = (next(train_iter))['point_cloud'].to(args.device)
-# writer.add_graph(model, x)
-# writer.flush()
+model.eval()
+x = (next(train_iter))['point_cloud'].to(args.device)
+writer.add_graph(model, x)
+writer.flush()
 logger.info(repr(model))
 
 # optimizer & scheduler
@@ -150,7 +150,6 @@ if __name__ == '__main__':
         i = 1
         while i <= args.max_iters:
             train(i)
-            test(i)
             if i % args.val_freq == 0:
                 validate_inspect(i)
                 opt_states = {
