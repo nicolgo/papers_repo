@@ -65,10 +65,10 @@ else:
     model = FlowVAE(args).to(args.device)
 
 # save and visualize the model
-model.eval()
-x = (next(train_iter))['point_cloud'].to(args.device)
-writer.add_graph(model, x)
-writer.flush()
+# model.eval()
+# x = (next(train_iter))['point_cloud'].to(args.device)
+# writer.add_graph(model, x)
+# writer.flush()
 logger.info(repr(model))
 
 # optimizer & scheduler
@@ -119,7 +119,7 @@ def test(iteration_id):
     gen_pcs = []
     for temp in tqdm(range(0, math.ceil(args.test_size / args.val_batch_size)), 'Generate'):
         with torch.no_grad():
-            z_context = torch.randn([args.num_samples, args.latent_dim]).to(args.device)
+            z_context = torch.randn([args.val_batch_size, args.latent_dim]).to(args.device)
             gen_pcl = model.sample(z_context, args.sample_num_points)
             gen_pcs.append(gen_pcl.detach().cpu())
     gen_pcs = torch.cat(gen_pcs, dim=0)[:args.test_size]
@@ -150,6 +150,7 @@ if __name__ == '__main__':
         i = 1
         while i <= args.max_iters:
             train(i)
+            test(i)
             if i % args.val_freq == 0:
                 validate_inspect(i)
                 opt_states = {
