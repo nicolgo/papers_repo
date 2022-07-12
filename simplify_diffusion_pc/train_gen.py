@@ -44,9 +44,13 @@ parser.add_argument('--val_freq', type=int, default=1000)
 parser.add_argument('--test_freq', type=int, default=30 * THOUSAND)
 parser.add_argument('--test_size', type=int, default=400)
 
+# Resume the training Process
+parser.add_argument('--resume', type=str, default=None)  # pass the check point file absolute path
+
 args = parser.parse_args()
 args.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 seed_all(2022)  # give a value to get a reproducible result
+
 # Initialize the logger
 log_dir = get_new_log_dir('./logs_gen', prefix='GEN_', postfix='')
 logger = get_logger('train', log_dir)
@@ -58,11 +62,21 @@ train_dataset = ShapeNetData(path=args.dataset_path, categories=['airplane'], sp
 val_dataset = ShapeNetData(path=args.dataset_path, categories=['airplane'], split='val', scale_mode=args.scale_mode)
 train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=args.train_batch_size, num_workers=0))
 
-logger.info('create model')
-if args.model_type == 'gaussian':
-    model = GaussianVAE(args).to(args.device)
+# for resume, no need override the parameters, just load the model
+if args.resume is not None:
+    logger.info('Resuming from checkpoint...')
+    ckpt = torch.load(args.resume)
+    if ckpt['args'].model_type == 'gaussian':
+        model = GaussianVAE(args).to(args.device)
+    else:
+        model = FlowVAE(args).to(args.device)
+    model.load_state_dict(ckpt['state_dict'])
 else:
-    model = FlowVAE(args).to(args.device)
+    logger.info('create model')
+    if args.model_type == 'gaussian':
+        model = GaussianVAE(args).to(args.device)
+    else:
+        model = FlowVAE(args).to(args.device)
 
 # save and visualize the model
 model.eval()
@@ -158,6 +172,7 @@ if __name__ == '__main__':
                 }
                 # save args & model & optimizer & scheduler
                 ckpt_mgr.save(model, args, score=0, others=opt_states, step=i)
+            # TODO: backup the writer file.
             if i % args.test_freq == 0:
                 test(i)
             i += 1
