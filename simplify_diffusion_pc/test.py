@@ -22,7 +22,7 @@ def show_diffusion_process(x_0_t):
     vis.destroy_window()
 
 
-if __name__ == "__main__":
+def show_point_cloud():
     train_dataset = ShapeNetData(path='./data/shapenet.hdf5', categories=['airplane'], split='train',
                                  scale_mode='shape_unit')
     train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=1, num_workers=0))
@@ -39,3 +39,12 @@ if __name__ == "__main__":
     for key, value in x_t_0.items():
         show_list.append(x_t_0[key].squeeze(dim=0))
     show_diffusion_process(show_list)
+
+
+if __name__ == "__main__":
+    # show_point_cloud()
+    BACKUP_PATH = "\\\\COMPDrive\Student1\\21042139g\\COMProfile\\Documents\\Backup"
+    backup_name = "train_501_102"
+    backup_path = os.path.join(BACKUP_PATH, backup_name)
+    backup_training_files(source_path="D:\papers_repo\simplify_diffusion_pc\logs_gen\GEN_2022_07_13__15_58_25",
+                          target_path=BACKUP_PATH)

@@ -6,6 +6,7 @@ import logging.handlers
 import torch
 from tqdm.auto import tqdm
 import numpy as np
+import shutil
 
 THOUSAND = 1000
 MILLION = 1000000
@@ -158,3 +159,23 @@ def seed_all(seed):
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
+
+
+def backup_training_files(source_path, target_path):
+    if not os.path.exists(target_path):
+        os.makedirs(target_path, exist_ok=True)
+    dirs = os.listdir(target_path)
+    # copy
+    source_dir_name = os.path.basename(source_path)
+    target_dir_name = os.path.join(target_path, source_dir_name)
+    if source_dir_name not in dirs:
+        shutil.copytree(source_path, target_dir_name, dirs_exist_ok=True)
+    # delete original directories
+    for name in dirs:
+        shutil.rmtree(os.path.join(os.path.join(target_path, name)))
+    # mv name
+    dir_name = os.path.basename(source_path)
+    dir_name2 = dir_name + "_back"
+    src_file_name = os.path.join(target_path, dir_name)
+    target_dir_name = os.path.join(target_path, dir_name2)
+    os.rename(src_file_name, target_dir_name)  # using absolute path
