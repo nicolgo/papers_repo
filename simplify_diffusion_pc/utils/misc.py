@@ -7,6 +7,7 @@ import torch
 from tqdm.auto import tqdm
 import numpy as np
 import shutil
+import glob
 
 THOUSAND = 1000
 MILLION = 1000000
@@ -161,9 +162,32 @@ def seed_all(seed):
     random.seed(seed)
 
 
+def only_leave_latest_file(source_path, file_suffix='*.pt'):
+    # get the latest files
+    latest_time = 0
+    files = glob.glob(os.path.join(source_path, file_suffix))
+    latest_time = os.path.getmtime(files[0])
+    for file in files:
+        tmp = os.path.getmtime(file)
+        if os.path.getmtime(file) > latest_time:
+            latest_time = os.path.getmtime(file)
+    # remove old files
+    for file in files:
+        if os.path.getmtime(file) + 1 < latest_time:
+            os.remove(file)
+
+
+# Usage:
+# BACKUP_PATH = "\\\\COMPDrive\Student1\\21042139g\\COMProfile\\Documents\\Backup\\"
+# backup_name = "train_501_102"
+# backup_path = os.path.join(BACKUP_PATH, backup_name)
+# backup_training_files(source_path="D:\papers_repo\simplify_diffusion_pc\logs_gen\GEN_2022_07_13__15_58_25",
+#                       target_path=BACKUP_PATH)
 def backup_training_files(source_path, target_path):
     if not os.path.exists(target_path):
         os.makedirs(target_path, exist_ok=True)
+    # clean the files in source path, only leave newest ".pt" file
+    only_leave_latest_file(source_path)
     dirs = os.listdir(target_path)
     # copy
     source_dir_name = os.path.basename(source_path)
