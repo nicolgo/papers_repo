@@ -12,6 +12,9 @@ from models.vae_gaussian import *
 from models.vae_flow import *
 from evaluation import *
 
+# Global directory Path
+BACKUP_PATH = "\\\\COMPDrive\Student1\\21042139g\\COMProfile\\Documents\\Backup"
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset_path', type=str, default='./data/shapenet.hdf5')
 parser.add_argument('--scale_mode', type=str, default='shape_unit')
@@ -44,25 +47,28 @@ parser.add_argument('--val_freq', type=int, default=1000)
 parser.add_argument('--test_freq', type=int, default=30 * THOUSAND)
 parser.add_argument('--test_size', type=int, default=400)
 
-# Resume the training Process
+# Resume the training Process from the backup directory
+parser.add_argument('--backup_dir', type=str, default="train_507_102")
 parser.add_argument('--resume', type=str, default=None)  # pass the check point file absolute path
+parser.add_argument('--resume_step', type=int, default=1)  # save the resume step
 
 args = parser.parse_args()
 args.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 seed_all(2022)  # give a value to get a reproducible result
+my_backup_path = os.path.join(BACKUP_PATH, args.backup_dir)
 
-# Initialize the logger
-log_dir = get_new_log_dir('./logs_gen', prefix='GEN_', postfix='')
+if args.resume is None:
+    # Initialize the logger
+    log_dir = get_new_log_dir('./logs_gen', prefix='GEN_', postfix='')
+else:
+    log_dir = os.path.dirname(args.resume)
+
 logger = get_logger('train', log_dir)
 writer = torch.utils.tensorboard.SummaryWriter(log_dir)
 ckpt_mgr = CheckpointManager(log_dir)
 
-logger.info('Loading dataset...')
-train_dataset = ShapeNetData(path=args.dataset_path, categories=['airplane'], split='train', scale_mode=args.scale_mode)
-val_dataset = ShapeNetData(path=args.dataset_path, categories=['airplane'], split='val', scale_mode=args.scale_mode)
-train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=args.train_batch_size, num_workers=0))
-
 # for resume, no need override the parameters, just load the model
+ckpt = None
 if args.resume is not None:
     logger.info('Resuming from checkpoint...')
     ckpt = torch.load(args.resume)
@@ -71,12 +77,18 @@ if args.resume is not None:
     else:
         model = FlowVAE(args).to(args.device)
     model.load_state_dict(ckpt['state_dict'])
+    args.resume_step = ckpt['args'].resume_step
 else:
     logger.info('create model')
     if args.model_type == 'gaussian':
         model = GaussianVAE(args).to(args.device)
     else:
         model = FlowVAE(args).to(args.device)
+
+logger.info('Loading dataset...')
+train_dataset = ShapeNetData(path=args.dataset_path, categories=['airplane'], split='train', scale_mode=args.scale_mode)
+val_dataset = ShapeNetData(path=args.dataset_path, categories=['airplane'], split='val', scale_mode=args.scale_mode)
+train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=args.train_batch_size, num_workers=0))
 
 # save and visualize the model
 model.eval()
@@ -158,10 +170,25 @@ def test(iteration_id):
     writer.flush()
 
 
+def backup_training_files(i, log_dir):
+    try:
+        args.resume_step = i
+        backup_training_files(log_dir, my_backup_path)
+        logger.info("backup successfully!")
+    except Exception as e:
+        logger.warning(f"failed to backup training files at {i} step!")
+        logger.warning('An exception occurred: {}'.format(e))
+        pass
+
+
 if __name__ == '__main__':
     logger.info('Start training...')
-    try:
+    if args.resume is None:
         i = 1
+    else:
+        i = args.resume_step
+
+    try:
         while i <= args.max_iters:
             train(i)
             if i % args.val_freq == 0:
@@ -172,7 +199,8 @@ if __name__ == '__main__':
                 }
                 # save args & model & optimizer & scheduler
                 ckpt_mgr.save(model, args, score=0, others=opt_states, step=i)
-            # TODO: backup the writer file.
+                # backup intermediate files
+                backup_training_files(i, log_dir)
             if i % args.test_freq == 0:
                 test(i)
             i += 1
