@@ -54,8 +54,12 @@ parser.add_argument('--resume_step', type=int, default=1)  # save the resume ste
 
 args = parser.parse_args()
 args.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-seed_all(2022)  # give a value to get a reproducible result
 my_backup_path = os.path.join(BACKUP_PATH, args.backup_dir)
+if os.path.exists(my_backup_path):
+    args.backup_dir = args.backup_dir + time.strftime('%Y_%m_%d__%H_%M_%S', time.localtime())
+    my_backup_path = os.path.join(BACKUP_PATH, args.backup_dir)
+
+seed_all(2022)  # give a value to get a reproducible result
 
 if args.resume is None:
     # Initialize the logger
@@ -170,7 +174,7 @@ def test(iteration_id):
     writer.flush()
 
 
-def backup_training_files(i, log_dir):
+def backup_current_training_files(i, log_dir):
     try:
         args.resume_step = i
         backup_training_files(log_dir, my_backup_path)
@@ -200,7 +204,7 @@ if __name__ == '__main__':
                 # save args & model & optimizer & scheduler
                 ckpt_mgr.save(model, args, score=0, others=opt_states, step=i)
                 # backup intermediate files
-                backup_training_files(i, log_dir)
+                backup_current_training_files(i, log_dir)
             if i % args.test_freq == 0:
                 test(i)
             i += 1
