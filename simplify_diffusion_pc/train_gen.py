@@ -81,8 +81,8 @@ if args.resume is not None:
     else:
         model = FlowVAE(args).to(args.device)
     model.load_state_dict(ckpt['state_dict'])
-    args.resume_step = ckpt['args'].resume_step
-    args.model_type = ckpt['args'].model_type # update the value for next resume
+    args.resume_step = ckpt['args'].resume_step if (args.resume_step == 1) else args.resume_step
+    args.model_type = ckpt['args'].model_type  # update the value for next resume
 else:
     logger.info('create model')
     if args.model_type == 'gaussian':
