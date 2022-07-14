@@ -82,6 +82,7 @@ if args.resume is not None:
         model = FlowVAE(args).to(args.device)
     model.load_state_dict(ckpt['state_dict'])
     args.resume_step = ckpt['args'].resume_step
+    args.model_type = ckpt['args'].model_type # update the value for next resume
 else:
     logger.info('create model')
     if args.model_type == 'gaussian':
@@ -95,10 +96,10 @@ val_dataset = ShapeNetData(path=args.dataset_path, categories=['airplane'], spli
 train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=args.train_batch_size, num_workers=0))
 
 # save and visualize the model
-model.eval()
-x = (next(train_iter))['point_cloud'].to(args.device)
-writer.add_graph(model, x)
-writer.flush()
+# model.eval()
+# x = (next(train_iter))['point_cloud'].to(args.device)
+# writer.add_graph(model, x)
+# writer.flush()
 logger.info(repr(model))
 
 # optimizer & scheduler
@@ -178,7 +179,7 @@ def backup_current_training_files(i, log_dir):
     try:
         args.resume_step = i
         backup_training_files(log_dir, my_backup_path)
-        logger.info("backup successfully!")
+        logger.info(f"backup successfully at {i} step!")
     except Exception as e:
         logger.warning(f"failed to backup training files at {i} step!")
         logger.warning('An exception occurred: {}'.format(e))
@@ -190,7 +191,7 @@ if __name__ == '__main__':
     if args.resume is None:
         i = 1
     else:
-        i = args.resume_step
+        i = args.resume_step + 1
 
     try:
         while i <= args.max_iters:
