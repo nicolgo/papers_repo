@@ -177,7 +177,6 @@ def test(iteration_id):
 
 def backup_current_training_files(i, log_dir):
     try:
-        args.resume_step = i
         backup_training_files(log_dir, my_backup_path)
         logger.info(f"backup successfully at {i} step!")
     except Exception as e:
@@ -203,6 +202,7 @@ if __name__ == '__main__':
                     'scheduler': scheduler.state_dict(),
                 }
                 # save args & model & optimizer & scheduler
+                args.resume_step = i
                 ckpt_mgr.save(model, args, score=0, others=opt_states, step=i)
                 # backup intermediate files
                 backup_current_training_files(i, log_dir)
