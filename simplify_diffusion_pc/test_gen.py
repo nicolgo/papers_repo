@@ -33,10 +33,8 @@ logger = get_logger('test', log_test_dir)
 
 logger.info('Loading model...')
 ckpt = torch.load(args.ckpt)
-if ckpt['args'].model_type == 'gaussian':
-    model = GaussianVAE(ckpt['args']).to(args.device)
-elif ckpt['args'].model_type == 'flow':
-    model = FlowVAE(ckpt['args']).to(args.device)
+model = get_model_by_type(ckpt['args'].model_type, args)
+
 model.load_state_dict(ckpt['state_dict'])
 logger.info(repr(model))
 

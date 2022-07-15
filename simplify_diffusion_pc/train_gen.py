@@ -10,6 +10,7 @@ from utils.misc import *
 from utils.dataset import *
 from models.vae_gaussian import *
 from models.vae_flow import *
+from models.vae_diffusion import *
 from evaluation import *
 
 # Global directory Path
@@ -22,7 +23,7 @@ parser.add_argument('--train_batch_size', type=int, default=128)
 parser.add_argument('--val_batch_size', type=int, default=64)
 
 # Model arguments
-parser.add_argument('--model_type', type=str, default='flow', choices=['flow', 'gaussian'])
+parser.add_argument('--model_type', type=str, default='flow', choices=['flow', 'gaussian', 'pure'])
 parser.add_argument('--latent_dim', type=int, default=256)
 parser.add_argument('--truncate_std', type=float, default=2.0)
 parser.add_argument('--num_samples', type=int, default=6)
@@ -76,19 +77,13 @@ ckpt = None
 if args.resume is not None:
     logger.info('Resuming from checkpoint...')
     ckpt = torch.load(args.resume)
-    if ckpt['args'].model_type == 'gaussian':
-        model = GaussianVAE(args).to(args.device)
-    else:
-        model = FlowVAE(args).to(args.device)
+    model = get_model_by_type(ckpt['args'].model_type, args)
     model.load_state_dict(ckpt['state_dict'])
     args.resume_step = ckpt['args'].resume_step if (args.resume_step == 1) else args.resume_step
     args.model_type = ckpt['args'].model_type  # update the value for next resume
 else:
     logger.info('create model')
-    if args.model_type == 'gaussian':
-        model = GaussianVAE(args).to(args.device)
-    else:
-        model = FlowVAE(args).to(args.device)
+    model = get_model_by_type(args.model_type, args)
 
 logger.info('Loading dataset...')
 train_dataset = ShapeNetData(path=args.dataset_path, categories=['airplane'], split='train', scale_mode=args.scale_mode)
@@ -96,10 +91,10 @@ val_dataset = ShapeNetData(path=args.dataset_path, categories=['airplane'], spli
 train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=args.train_batch_size, num_workers=0))
 
 # save and visualize the model
-# model.eval()
-# x = (next(train_iter))['point_cloud'].to(args.device)
-# writer.add_graph(model, x)
-# writer.flush()
+model.eval()
+x = (next(train_iter))['point_cloud'].to(args.device)
+writer.add_graph(model, x)
+writer.flush()
 logger.info(repr(model))
 
 # optimizer & scheduler

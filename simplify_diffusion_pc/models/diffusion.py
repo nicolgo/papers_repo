@@ -37,9 +37,11 @@ class PointWiseNet(Module):
     def forward(self, x, beta, z_context):
         batch_size = x.size(0)
         beta = beta.view(batch_size, 1, 1)  # (B, 1, 1)
-        z_context = z_context.view(batch_size, 1, -1)  # (B, 1, z_dim)
-
-        beta_with_z = torch.cat([beta, torch.sin(beta), torch.cos(beta), z_context], dim=-1)
+        if z_context is not None:
+            z_context = z_context.view(batch_size, 1, -1)  # (B, 1, z_dim)
+            beta_with_z = torch.cat([beta, torch.sin(beta), torch.cos(beta), z_context], dim=-1)
+        else:
+            beta_with_z = torch.cat([beta, torch.sin(beta), torch.cos(beta)], dim=-1)
 
         out_put = x
         for i, layer in enumerate(self.layers):
@@ -93,14 +95,11 @@ class DiffusionPoint(Module):
         loss = F.mse_loss(noise.view(-1, 3), noise_theta.view(-1, 3), reduction='mean')
         return loss
 
-    def diffusion_process(self, x_0: torch.Tensor):
-        noise = torch.randn_like(x_0)
-        x_0_t = self.alpha_bar_sqrt * x_0 + self.one_minus_alpha_bar_sqrt * noise
-        return x_0_t
-
-    def reverse_sample(self, num_points, z_context, ret_traj=False):
-        batch_size = z_context.size(0)
-        x_t = torch.randn([z_context.size(0), num_points, 3]).to(z_context.device)
+    def reverse_sample(self, num_points, z_context, batch_size=128, device=torch.device('cpu'), ret_traj=False):
+        if z_context is not None:
+            batch_size = z_context.size(0)
+            device = z_context.device
+        x_t = torch.randn([batch_size, num_points, 3]).to(device)
         traj = {self.num_steps: x_t}
         for t in range(self.num_steps, 0, -1):
             x_t = traj[t]
@@ -120,6 +119,11 @@ class DiffusionPoint(Module):
             return traj
         else:
             return traj[0]
+
+    def diffusion_process(self, x_0: torch.Tensor):
+        noise = torch.randn_like(x_0)
+        x_0_t = self.alpha_bar_sqrt * x_0 + self.one_minus_alpha_bar_sqrt * noise
+        return x_0_t
 
     def reverse_with_x0_xt(self, x_0: torch.Tensor):
         noise = torch.randn_like(x_0)
