@@ -1,9 +1,6 @@
 import torch
 from torch.optim.lr_scheduler import LambdaLR
 import numpy as np
-from .vae_flow import *
-from .vae_gaussian import *
-from .vae_diffusion import *
 
 
 def reparameterize_gaussian(mean, logvar):
@@ -50,16 +47,3 @@ def get_linear_scheduler(optimizer, start_epoch, end_epoch, start_lr, end_lr):
             return end_lr / start_lr
 
     return LambdaLR(optimizer, lr_lambda=lr_func)
-
-
-def get_model_by_type(model_type, arguments):
-    gen_model = None
-    if model_type == 'gaussian':
-        gen_model = GaussianVAE(arguments).to(arguments.device)
-    elif model_type == 'flow':
-        gen_model = FlowVAE(arguments).to(arguments.device)
-    elif model_type == 'pure':
-        gen_model = PureDiffusion(arguments).to(arguments.device)
-    else:
-        pass
-    return gen_model

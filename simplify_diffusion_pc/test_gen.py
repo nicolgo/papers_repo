@@ -13,9 +13,10 @@ from utils.dataset import *
 from models.vae_gaussian import *
 from models.vae_flow import *
 from evaluation import *
+from models.model_factory import *
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--ckpt', type=str, default='./pretrained/airplane_90000.pt')
+parser.add_argument('--ckpt', type=str, default='./pretrained/gaussian_986000.pt')
 parser.add_argument('--device', type=str, default='cuda')
 # Datasets and loaders
 parser.add_argument('--dataset_path', type=str, default='./data/shapenet.hdf5')
@@ -33,8 +34,7 @@ logger = get_logger('test', log_test_dir)
 
 logger.info('Loading model...')
 ckpt = torch.load(args.ckpt)
-model = get_model_by_type(ckpt['args'].model_type, args)
-
+model = (get_model_by_type(ckpt['args'].model_type, ckpt['args'])).to(args.device)
 model.load_state_dict(ckpt['state_dict'])
 logger.info(repr(model))
 

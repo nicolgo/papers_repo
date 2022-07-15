@@ -11,6 +11,7 @@ from utils.dataset import *
 from models.vae_gaussian import *
 from models.vae_flow import *
 from models.vae_diffusion import *
+from models.model_factory import *
 from evaluation import *
 
 # Global directory Path
@@ -77,13 +78,13 @@ ckpt = None
 if args.resume is not None:
     logger.info('Resuming from checkpoint...')
     ckpt = torch.load(args.resume)
-    model = get_model_by_type(ckpt['args'].model_type, args)
+    model = (get_model_by_type(ckpt['args'].model_type, args)).to(args.device)
     model.load_state_dict(ckpt['state_dict'])
     args.resume_step = ckpt['args'].resume_step if (args.resume_step == 1) else args.resume_step
     args.model_type = ckpt['args'].model_type  # update the value for next resume
 else:
     logger.info('create model')
-    model = get_model_by_type(args.model_type, args)
+    model = (get_model_by_type(args.model_type, args)).to(args.device)
 
 logger.info('Loading dataset...')
 train_dataset = ShapeNetData(path=args.dataset_path, categories=['airplane'], split='train', scale_mode=args.scale_mode)
