@@ -102,6 +102,11 @@ logger.info(repr(model))
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 scheduler = get_linear_scheduler(optimizer, start_epoch=args.sched_start_epoch, end_epoch=args.sched_end_epoch,
                                  start_lr=args.lr, end_lr=args.end_lr)
+if args.resume is not None:
+    logger.info("Loading optimizer and scheduler...")
+    optimizer.load_state_dict(ckpt['others']['optimizer'])
+    scheduler.load_state_dict(ckpt['others']['scheduler'])
+    logger.info("Loading optimizer and scheduler successfully")
 
 
 def train(iteration_id):
