@@ -147,7 +147,7 @@ def get_data_iterator(iterable):
             iterator = iterable.__iter__()
 
 
-def analysis_point_cloud(data_set,scale_mode=None):
+def analysis_point_cloud(data_set, scale_mode=None):
     my_pcl = []
     for i, item in enumerate(data_set):
         my_pcl.append(item['point_cloud'].unsqueeze(dim=0))
@@ -161,11 +161,12 @@ def analysis_point_cloud(data_set,scale_mode=None):
 def get_different_normalized_pcl(scale_mode):
     data_set = ShapeNetData(path='../data/shapenet.hdf5', categories=['airplane'], split='train',
                             scale_mode=scale_mode)
-    analysis_point_cloud(data_set,scale_mode)
+    analysis_point_cloud(data_set, scale_mode)
     cloud_iter = get_data_iterator(DataLoader(data_set, batch_size=2, num_workers=0))
     batch = next(cloud_iter)
     x = batch['point_cloud']
     return x
+
 
 if __name__ == "__main__":
     x = get_different_normalized_pcl('shape_unit')
