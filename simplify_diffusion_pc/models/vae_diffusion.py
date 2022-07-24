@@ -6,11 +6,14 @@ from .diffusion import *
 class PureDiffusion(Module):
     def __init__(self, args):
         super().__init__()
+        self.device = args.device
+        self.latent_dim = args.latent_dim
         self.loss_diffusion = None
-        self.diffusion = DiffusionPoint(z_dim=0, device=args.device)
+        self.diffusion = DiffusionPoint(z_dim=self.latent_dim, device=self.device)
 
     def forward(self, x):
-        self.loss_diffusion = self.diffusion(x, None)
+        z = torch.randn([x.size(0), self.latent_dim]).to(self.device)
+        self.loss_diffusion = self.diffusion(x, z)
         return self.loss_diffusion
 
     def get_loss(self, kl_weight=0.001, writer=None, iteration_id=None):

@@ -31,7 +31,6 @@ class PointWiseNet(Module):
             ConcatSquashLinear(512, 256, z_context_dim + 3),
             ConcatSquashLinear(256, 128, z_context_dim + 3),
             ConcatSquashLinear(128, 3, z_context_dim + 3),
-
         ])
 
     def forward(self, x, beta, z_context):
