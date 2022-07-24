@@ -28,6 +28,10 @@ class PureDiffusion(Module):
         return loss
 
     def sample(self, z_context, num_points, truncate_std=None):
-        samples = self.diffusion.reverse_sample(num_points, z_context=None, batch_size=z_context.size(0),
-                                                device=z_context.device)
+        if self.extend_latent_dim is False:
+            samples = self.diffusion.reverse_sample(num_points, z_context=z_context, batch_size=z_context.size(0),
+                                                    device=z_context.device)
+        else:
+            samples = self.diffusion.reverse_sample(num_points, z_context=None, batch_size=z_context.size(0),
+                                                    device=z_context.device)
         return samples
