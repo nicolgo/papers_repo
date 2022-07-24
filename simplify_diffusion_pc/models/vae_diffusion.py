@@ -8,11 +8,14 @@ class PureDiffusion(Module):
         super().__init__()
         self.device = args.device
         self.latent_dim = args.latent_dim
+        self.extend_latent_dim = args.extend_latent_dim
         self.loss_diffusion = None
         self.diffusion = DiffusionPoint(z_dim=self.latent_dim, device=self.device)
 
     def forward(self, x):
-        z = torch.randn([x.size(0), self.latent_dim]).to(self.device)
+        z = None
+        if self.extend_latent_dim is False:
+            z = torch.randn([x.size(0), self.latent_dim]).to(self.device)
         self.loss_diffusion = self.diffusion(x, z)
         return self.loss_diffusion
 
