@@ -12,7 +12,9 @@ class PureDiffusion(Module):
         self.diffusion = DiffusionPoint(z_dim=self.latent_dim, device=self.device)
 
     def forward(self, x):
-        z = torch.randn([x.size(0), self.latent_dim]).to(self.device)
+        z = None
+        if self.latent_dim != 0:
+            z = torch.randn([x.size(0), self.latent_dim]).to(self.device)
         self.loss_diffusion = self.diffusion(x, z)
         return self.loss_diffusion
 
@@ -25,6 +27,10 @@ class PureDiffusion(Module):
         return loss
 
     def sample(self, z_context, num_points, truncate_std=None):
-        samples = self.diffusion.reverse_sample(num_points, z_context=None, batch_size=z_context.size(0),
-                                                device=z_context.device)
+        if self.latent_dim == 0:
+            samples = self.diffusion.reverse_sample(num_points, z_context=None, batch_size=z_context.size(0),
+                                                    device=z_context.device)
+        else:
+            samples = self.diffusion.reverse_sample(num_points, z_context=z_context, batch_size=z_context.size(0),
+                                                    device=z_context.device)
         return samples
