@@ -29,7 +29,6 @@ parser.add_argument('--latent_dim', type=int, default=256)
 parser.add_argument('--truncate_std', type=float, default=2.0)
 parser.add_argument('--num_samples', type=int, default=6)
 parser.add_argument('--sample_num_points', type=int, default=2048)
-parser.add_argument('--extend_latent_dim', type=bool, default=False)
 # Flow Model arguments
 parser.add_argument('--latent_flow_depth', type=int, default=14)
 parser.add_argument('--latent_flow_hidden_dim', type=int, default=256)

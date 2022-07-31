@@ -1,4 +1,3 @@
-import numpy
 import torch
 import torch.nn.functional as F
 from torch.nn import Module, Parameter, ModuleList, Linear
@@ -34,16 +33,6 @@ class PointWiseNet(Module):
             ConcatSquashLinear(128, 3, z_context_dim + 3),
         ])
 
-    def extend_beta(self, beta):
-        """
-        I extend dim with 256
-        """
-        extend_beta = torch.cat([beta, torch.sin(beta), torch.cos(beta)], dim=-1)
-        for i in range(0, 128):
-            temp = i * numpy.pi * beta
-            extend_beta = torch.cat([extend_beta, torch.sin(temp), torch.cos(temp)], dim=-1)
-        return extend_beta
-
     def forward(self, x, beta, z_context):
         batch_size = x.size(0)
         beta = beta.view(batch_size, 1, 1)  # (B, 1, 1)
@@ -51,8 +40,7 @@ class PointWiseNet(Module):
             z_context = z_context.view(batch_size, 1, -1)  # (B, 1, z_dim)
             beta_with_z = torch.cat([beta, torch.sin(beta), torch.cos(beta), z_context], dim=-1)
         else:
-            beta_with_z = self.extend_beta(beta)
-            # beta_with_z = torch.cat([beta, torch.sin(beta), torch.cos(beta)], dim=-1)
+            beta_with_z = torch.cat([beta, torch.sin(beta), torch.cos(beta)], dim=-1)
 
         out_put = x
         for i, layer in enumerate(self.layers):
