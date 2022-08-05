@@ -1,3 +1,6 @@
 [submodule "pointflow/PointFlow"]
 	path = pointflow/PointFlow
 	url = https://github.com/stevenygd/PointFlow.git
+[submodule "ddpm/denoising-diffusion-pytorch"]
+	path = ddpm/denoising-diffusion-pytorch
+	url = https://github.com/lucidrains/denoising-diffusion-pytorch.git
