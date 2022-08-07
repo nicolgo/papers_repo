@@ -6,6 +6,6 @@ CALL conda activate ddpm
 CALL conda install pytorch torchvision torchaudio cudatoolkit=11.3 -c pytorch -y
 CALL conda install -c conda-forge einops -y
 CALL conda install tqdm pillow -y
-CALL conda install -c fastai accelerate
-CALL pip install ema-pytorch
+CALL conda install -c fastai accelerate -y
+CALL pip install ema-pytorch -y
 PAUSE
