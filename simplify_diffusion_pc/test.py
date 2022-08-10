@@ -5,6 +5,7 @@ from models.vae_gaussian import *
 from models.diffusion import *
 from models.model_factory import *
 from utils.tsne import *
+from utils.visualization_pcd import *
 import time
 
 
@@ -75,3 +76,10 @@ if __name__ == "__main__":
     # show_point_cloud()
     # only_leave_latest_file("D:\GEN_2022_07_04__18_50_41")
     show_latent_space()
+    # train_dataset = ShapeNetData(path='./data/shapenet.hdf5', categories=['airplane'], split='train',
+    #                              scale_mode='shape_unit')
+    # train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=128, num_workers=0))
+    # batch = next(train_iter)
+    # x = batch['point_cloud']
+    # pcd = x.numpy()
+    # show_pcds_with_plot(pcd)
