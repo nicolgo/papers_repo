@@ -1,6 +1,5 @@
 import argparse
 import math
-
 from tqdm.auto import tqdm
 import torch.utils.tensorboard
 import torch
@@ -13,6 +12,7 @@ from models.vae_flow import *
 from models.vae_diffusion import *
 from models.model_factory import *
 from evaluation import *
+import sys
 
 # Global directory Path
 BACKUP_PATH = "\\\\COMPDrive\Student1\\21042139g\\COMProfile\\Documents\\Backup"
@@ -73,6 +73,8 @@ logger = get_logger('train', log_dir)
 writer = torch.utils.tensorboard.SummaryWriter(log_dir)
 ckpt_mgr = CheckpointManager(log_dir)
 
+logger.info(sys.argv)
+logger.info(args)
 # for resume, no need override the parameters, just load the model
 ckpt = None
 if args.resume is not None:

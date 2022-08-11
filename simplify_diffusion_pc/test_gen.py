@@ -14,6 +14,7 @@ from models.vae_gaussian import *
 from models.vae_flow import *
 from evaluation import *
 from models.model_factory import *
+import sys
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--ckpt', type=str, default='./pretrained/gaussian_986000.pt')
@@ -32,6 +33,8 @@ if not os.path.exists(log_test_dir):
     os.makedirs(log_test_dir)
 logger = get_logger('test', log_test_dir)
 
+logger.info(sys.argv)
+logger.info(args)
 logger.info('Loading model...')
 ckpt = torch.load(args.ckpt)
 model = (get_model_by_type(ckpt['args'].model_type, ckpt['args'])).to(args.device)
