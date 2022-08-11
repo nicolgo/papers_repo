@@ -49,14 +49,15 @@ ref_pcs = torch.cat(ref_pcs, dim=0)  # (N, 2048, 3)
 def create_diff_normal_distributions():
     diff_mean = (0.01, 0.02, 0.05, 0.1, 0.2, 0.4, 1.0, 2.0, 4.0)
     diff_var = (0.005, 0.010, 0.020, 0.040, 0.100, 0.200, 0.400, 1.000, 2.000, 4.000)
-    diff_mean_list = [(mean, 1.00) for mean in diff_mean] + [(-mean, 1.00) for mean in diff_mean]
-    diff_var_list = [(0, 1 - var) for var in diff_var] + [(0, 1 + var) for var in diff_var]
+    diff_mean_list = [(0, 1)] + [(mean, 1.00) for mean in diff_mean] + [(-mean, 1.00) for mean in diff_mean]
+    diff_var_list = [(0, 1)] + [(0, 1 - var) for var in diff_var] + [(0, 1 + var) for var in diff_var]
     # diff_mean_var_list = diff_mean_list + diff_var_list
     return diff_mean_list, diff_var_list
 
 
-diff_normal_dis, _ = create_diff_normal_distributions()
-for (diff_mean, diff_var) in diff_normal_dis:
+diff_mean_dis, diff_var_dis = create_diff_normal_distributions()
+all_res = dict()
+for (diff_mean, diff_var) in diff_mean_dis:
     logger.info(f'Generating the point clouds for ({diff_mean},{diff_var})')
     gen_pcs = []
     for i in tqdm(range(0, math.ceil(len(test_dataset) / args.batch_size))):
@@ -82,3 +83,9 @@ for (diff_mean, diff_var) in diff_normal_dis:
 
     for k, v in results.items():
         logger.info('%s: %.12f' % (k, v))
+
+    # all_res[(diff_mean, diff_var)] = [results['lgan_mmd'], results['lgan_cov'], results['1-NN-CD-acc'], results['jsd']]
+    all_res[(diff_mean, diff_var)] = results
+    logger.info(all_res)
+
+## generate the final results
