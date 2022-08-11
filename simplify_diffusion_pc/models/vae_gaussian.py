@@ -10,13 +10,14 @@ class GaussianVAE(Module):
         super().__init__()
         self.z = None
         self.z_log_var = None
+        self.z_mean = None
         self.loss_reverse = None
         self.encoder = PointNetEncoder(args.latent_dim)
         self.diffusion = DiffusionPoint(z_dim=args.latent_dim, device=args.device)
 
     def forward(self, x):
-        z_mean, self.z_log_var = self.encoder(x)
-        self.z = reparameterize_gaussian(z_mean, self.z_log_var)
+        self.z_mean, self.z_log_var = self.encoder(x)
+        self.z = reparameterize_gaussian(self.z_mean, self.z_log_var)
         self.loss_reverse = self.diffusion(x, self.z)
         return self.z, self.loss_reverse
 
@@ -34,6 +35,8 @@ class GaussianVAE(Module):
             writer.add_scalar('train/loss_entropy', -entropy.mean(), iteration_id)
             writer.add_scalar('train/loss_prior', -log_pz.mean(), iteration_id)
             writer.add_scalar('train/loss_diffusion', self.loss_reverse, iteration_id)
+            writer.add_scalar('train/z_mean', self.z_mean.mean(), iteration_id)
+            writer.add_scalar('train/z_var', (0.5 * self.z_log_var).exp().mean(), iteration_id)
         return loss
 
     def sample(self, z_context, num_points, truncate_std=None):
