@@ -24,8 +24,9 @@ parser.add_argument('--batch_size', type=int, default=64)
 # Sampling
 parser.add_argument('--normalize', type=str, default='shape_bbox', choices=[None, 'shape_unit', 'shape_bbox'])
 parser.add_argument('--seed', type=int, default=9988)
+parser.add_argument('test_type',type=str, default='mean',choices=['mean','var'])
 args = parser.parse_args()
-
+seed_all(args.seed)
 # Initialize logger
 log_test_dir = os.path.join('./results', 'GEN_Test_%s_%d' % ('_'.join(['airplane']), int(time.time())))
 if not os.path.exists(log_test_dir):
@@ -54,10 +55,13 @@ def create_diff_normal_distributions():
     # diff_mean_var_list = diff_mean_list + diff_var_list
     return diff_mean_list, diff_var_list
 
+if args.test_type == 'mean':
+    diff_distri, _ = create_diff_normal_distributions()
+else:
+    _, diff_distri = create_diff_normal_distributions()
 
-diff_mean_dis, diff_var_dis = create_diff_normal_distributions()
 all_res = dict()
-for (diff_mean, diff_var) in diff_mean_dis:
+for (diff_mean, diff_var) in diff_distri:
     logger.info(f'Generating the point clouds for ({diff_mean},{diff_var})')
     gen_pcs = []
     for i in tqdm(range(0, math.ceil(len(test_dataset) / args.batch_size))):
@@ -89,3 +93,27 @@ for (diff_mean, diff_var) in diff_mean_dis:
     logger.info(all_res)
 
 ## generate the final results
+import pandas as pd
+import matplotlib.pyplot as plt
+
+diff_means = [mean[0] for mean in all_res.keys()]
+diff_vars = [mean[1] for mean in all_res.keys()]
+evals = [[result['lgan_mmd']*1000, result['lgan_cov']*100, result['1-NN-CD-acc']*100, result['jsd']*100] for result in all_res.values()]
+eval_lables = ['MMD', 'COV', '1-NNA', 'JSD']
+
+if args.test_type=='mean':
+    table_data = [[mean]+eval_value for mean, eval_value in zip(diff_means,evals)]
+    df = pd.DataFrame(table_data, columns=['Mean'] + eval_lables)
+else:
+    table_data = [[diff_var] + eval_value for diff_var, eval_value in zip(diff_vars, evals)]
+    df = pd.DataFrame(table_data, columns=['Vars'] + eval_lables)
+
+for i in range(1,5):
+    plt.subplot(2,2,i)
+    test = df[eval_lables[i - 1]]
+    if args.test_type == 'mean':
+        plt.plot(df['Mean'],df[eval_lables[i-1]])
+    else:
+        plt.plot(df['Var'], df[eval_lables[i - 1]])
+plt.savefig("result.png")
+plt.show()
