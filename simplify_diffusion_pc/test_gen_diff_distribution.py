@@ -111,7 +111,7 @@ if args.test_type == 'mean':
     df = pd.DataFrame(table_data, columns=['Mean'] + eval_lables)
 else:
     table_data = [[diff_var] + eval_value for diff_var, eval_value in zip(diff_vars, evals)]
-    df = pd.DataFrame(table_data, columns=['Vars'] + eval_lables)
+    df = pd.DataFrame(table_data, columns=['Var'] + eval_lables)
 
 logger.info(df)
 for i in range(1, 5):
