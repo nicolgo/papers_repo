@@ -16,7 +16,7 @@ from evaluation import *
 from models.model_factory import *
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--ckpt', type=str, default='./pretrained/gaussian_986000.pt')
+parser.add_argument('--ckpt', type=str, default='./pretrained/gau_1623000.pt')
 parser.add_argument('--device', type=str, default='cuda')
 # Datasets and loaders
 parser.add_argument('--dataset_path', type=str, default='./data/shapenet.hdf5')
@@ -24,7 +24,7 @@ parser.add_argument('--batch_size', type=int, default=64)
 # Sampling
 parser.add_argument('--normalize', type=str, default='shape_bbox', choices=[None, 'shape_unit', 'shape_bbox'])
 parser.add_argument('--seed', type=int, default=9988)
-parser.add_argument('test_type',type=str, default='mean',choices=['mean','var'])
+parser.add_argument('--test_type', type=str, default='mean', choices=['mean', 'var'])
 args = parser.parse_args()
 seed_all(args.seed)
 # Initialize logger
@@ -52,8 +52,10 @@ def create_diff_normal_distributions():
     diff_var = (0.005, 0.010, 0.020, 0.040, 0.100, 0.200, 0.400, 1.000, 2.000, 4.000)
     diff_mean_list = [(0, 1)] + [(mean, 1.00) for mean in diff_mean] + [(-mean, 1.00) for mean in diff_mean]
     diff_var_list = [(0, 1)] + [(0, 1 - var) for var in diff_var] + [(0, 1 + var) for var in diff_var]
-    # diff_mean_var_list = diff_mean_list + diff_var_list
+    diff_mean_list.sort()
+    diff_var_list.sort()
     return diff_mean_list, diff_var_list
+
 
 if args.test_type == 'mean':
     diff_distri, _ = create_diff_normal_distributions()
@@ -98,22 +100,29 @@ import matplotlib.pyplot as plt
 
 diff_means = [mean[0] for mean in all_res.keys()]
 diff_vars = [mean[1] for mean in all_res.keys()]
-evals = [[result['lgan_mmd']*1000, result['lgan_cov']*100, result['1-NN-CD-acc']*100, result['jsd']*100] for result in all_res.values()]
+evals = [[result['lgan_mmd-CD'] * 1000, result['lgan_cov-CD'] * 100, result['1-NN-CD-acc'] * 100, result['jsd'] * 100]
+         for
+         result in all_res.values()]
 eval_lables = ['MMD', 'COV', '1-NNA', 'JSD']
 
-if args.test_type=='mean':
-    table_data = [[mean]+eval_value for mean, eval_value in zip(diff_means,evals)]
+if args.test_type == 'mean':
+    table_data = [[mean] + eval_value for mean, eval_value in zip(diff_means, evals)]
     df = pd.DataFrame(table_data, columns=['Mean'] + eval_lables)
 else:
     table_data = [[diff_var] + eval_value for diff_var, eval_value in zip(diff_vars, evals)]
     df = pd.DataFrame(table_data, columns=['Vars'] + eval_lables)
 
-for i in range(1,5):
-    plt.subplot(2,2,i)
+logger.info(df)
+for i in range(1, 5):
+    plt.subplot(2, 2, i)
     test = df[eval_lables[i - 1]]
     if args.test_type == 'mean':
-        plt.plot(df['Mean'],df[eval_lables[i-1]])
+        plt.plot(df['Mean'], df[eval_lables[i - 1]])
+        plt.xlabel('Mean', fontsize=18)
+        plt.ylabel(eval_lables[i - 1], fontsize=16)
     else:
         plt.plot(df['Var'], df[eval_lables[i - 1]])
+        plt.xlabel('Var', fontsize=18)
+        plt.ylabel(eval_lables[i - 1], fontsize=16)
 plt.savefig("result.png")
 plt.show()
