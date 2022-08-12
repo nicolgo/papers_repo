@@ -49,9 +49,10 @@ ref_pcs = torch.cat(ref_pcs, dim=0)  # (N, 2048, 3)
 
 def create_diff_normal_distributions():
     diff_mean = (0.01, 0.02, 0.05, 0.1, 0.2, 0.4, 1.0, 2.0, 4.0)
-    diff_var = (0.005, 0.010, 0.020, 0.040, 0.100, 0.200, 0.400, 1.000, 2.000, 4.000)
+    diff_var = (0.005, 0.010, 0.020, 0.040, 0.100, 0.200, 0.400, 0.800, 1.000, 2.000, 4.000)
+    diff_var2 = (0.005, 0.010, 0.020, 0.040, 0.100, 0.200, 0.400, 0.800)
     diff_mean_list = [(0, 1)] + [(mean, 1.00) for mean in diff_mean] + [(-mean, 1.00) for mean in diff_mean]
-    diff_var_list = [(0, 1)] + [(0, 1 - var) for var in diff_var] + [(0, 1 + var) for var in diff_var]
+    diff_var_list = [(0, 1)] + [(0, 1 - var) for var in diff_var2] + [(0, 1 + var) for var in diff_var]
     diff_mean_list.sort()
     diff_var_list.sort()
     return diff_mean_list, diff_var_list
