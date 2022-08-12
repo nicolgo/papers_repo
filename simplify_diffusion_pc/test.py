@@ -1,3 +1,6 @@
+import numpy as np
+import torch
+
 from utils.misc import *
 from torch.utils.data import dataset, DataLoader
 from utils.dataset import *
@@ -55,7 +58,7 @@ def show_latent_space():
     # w = torch.randn([128, ckpt['args'].latent_dim])
     # z_context = model.flow(w, reverse=True).view(w.size(0), -1)
     z_total = []
-    for i in range(10):
+    for i in range(1):
         batch = next(train_iter)
         x = batch['point_cloud']
         with torch.no_grad():
@@ -65,10 +68,17 @@ def show_latent_space():
                 z_total = z_context
             else:
                 z_total = torch.cat([z_total, z_context])
+    random_distribu = [(0, 1), (1, 1), (0, 1.2)]
+    z_all = z_total
+    for mean, std in random_distribu:
+        z_all = torch.cat((z_all, torch.normal(mean=mean, std=std, size=z_total.size())), dim=0)
 
-    Y = tsne(z_total.numpy(), 2, 50, 20.0)
-    # pylab.scatter(Y[:, 0], Y[:, 1], 20, labels)
-    pylab.scatter(Y[:, 0], Y[:, 1], 20)
+    labels = np.zeros(z_total.size(0))
+    for i in range(len(random_distribu)):
+        labels = np.concatenate((labels, np.ones(z_total.size(0)) * (i + 1)), axis=0)
+    Y = tsne(z_all.numpy(), 2, 50, 20.0)
+    pylab.scatter(Y[:, 0], Y[:, 1], 20, labels)
+    # pylab.scatter(Y[:, 0], Y[:, 1], 20)
     pylab.show()
 
 
