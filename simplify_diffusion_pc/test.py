@@ -125,12 +125,45 @@ def show_sample_process():
     pass
 
 
+def convert_pcl_to_image(category, num=20):
+    train_dataset = ShapeNetData(path='./data/shapenet.hdf5', categories=[category], split='train',
+                                 scale_mode='shape_unit')
+    train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=num, num_workers=0))
+    batch = next(train_iter)
+    x = batch['point_cloud']
+    os.makedirs(f'./images/{category}', exist_ok=True)
+    param = o3d.io.read_pinhole_camera_parameters('position.json')
+    vis = o3d.visualization.Visualizer()
+    vis.create_window()
+    pcl = o3d.geometry.PointCloud()
+    for i in range(num):
+        pcl.points = o3d.utility.Vector3dVector(x[i])
+        if i == 0:
+            vis.add_geometry(pcl)
+        else:
+            vis.update_geometry(pcl)
+        # time.sleep(0.1)
+        ctr = vis.get_view_control()
+        ctr.convert_from_pinhole_camera_parameters(param)
+        # param = ctr.convert_to_pinhole_camera_parameters()
+        # o3d.io.write_pinhole_camera_parameters('position.json',param)
+        vis.capture_screen_image(f"./images/{category}/{category}_{i}.jpg", do_render=True)
+        vis.poll_events()
+        vis.update_renderer()
+    vis.destroy_window()
+
+
+def save_all_pcd_to_images():
+    categories = list(synsetid_to_cate.values())
+    for category in categories:
+        convert_pcl_to_image(category, 20)
+
+
 if __name__ == "__main__":
     # show_point_cloud()
     # only_leave_latest_file("D:\GEN_2022_07_04__18_50_41")
     # show_latent_space()
-    # show_diff_scale_pcl()
-    show_sample_process()
+    show_diff_scale_pcl()
     # train_dataset = ShapeNetData(path='./data/shapenet.hdf5', categories=['airplane'], split='train',
     #                              scale_mode='shape_unit')
     # train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=128, num_workers=0))
