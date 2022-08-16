@@ -58,7 +58,7 @@ def show_latent_space():
     # w = torch.randn([128, ckpt['args'].latent_dim])
     # z_context = model.flow(w, reverse=True).view(w.size(0), -1)
     z_total = []
-    for i in range(1):
+    for i in range(10):
         batch = next(train_iter)
         x = batch['point_cloud']
         with torch.no_grad():
@@ -68,7 +68,7 @@ def show_latent_space():
                 z_total = z_context
             else:
                 z_total = torch.cat([z_total, z_context])
-    random_distribu = [(0, 1), (1, 1), (0, 1.2)]
+    random_distribu = [(0, 1)]
     z_all = z_total
     for mean, std in random_distribu:
         z_all = torch.cat((z_all, torch.normal(mean=mean, std=std, size=z_total.size())), dim=0)
@@ -82,10 +82,55 @@ def show_latent_space():
     pylab.show()
 
 
+def show_diff_scale_pcl():
+    diff_scale_modes = ('shape_unit', 'shape_half', 'shape_bbox', 'original')
+    pcl_sets = []
+    for diff_scale_mode in diff_scale_modes:
+        train_dataset = ShapeNetData(path='./data/shapenet.hdf5', categories=['airplane'], split='train',
+                                     scale_mode=diff_scale_mode)
+        train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=1, num_workers=0))
+        batch = next(train_iter)
+        x = batch['point_cloud']
+        pcl_sets.append(x[0].numpy())
+
+    fig = plt.figure()
+    for i in range(1, 5):
+        numpy_pcd = pcl_sets[i - 1]
+        ax = fig.add_subplot(2, 2, i, projection='3d')
+        ax.set_title(diff_scale_modes[i - 1])
+        # ax.set_axis_off()
+        ax.scatter(numpy_pcd[:, 0], numpy_pcd[:, 1], numpy_pcd[:, 2])
+    plt.show()
+
+
+def show_sample_process():
+    # load model
+    ckpt = torch.load('./pretrained/no_z_90000.pt')
+    model = (get_model_by_type(ckpt['args'].model_type, ckpt['args'])).to('cuda')
+    model.load_state_dict(ckpt['state_dict'])
+
+    z = torch.randn([1, 256]).to('cuda')
+    if ckpt['args'].model_type == 'flow':
+        z = model.flow(z, reverse=True).view(z.size(0), -1)
+    samples = model.diffusion.reverse_sample(2048, z, ret_traj=True)
+
+    fig = plt.figure()
+    for i in range(1, 101):
+        value = samples[i - 1].cpu().numpy()
+        numpy_pcd = value[0]
+        ax = fig.add_subplot(10, 10, i, projection='3d')
+        # ax.set_axis_off()
+        ax.scatter(numpy_pcd[:, 0], numpy_pcd[:, 1], numpy_pcd[:, 2])
+    plt.show()
+    pass
+
+
 if __name__ == "__main__":
     # show_point_cloud()
     # only_leave_latest_file("D:\GEN_2022_07_04__18_50_41")
-    show_latent_space()
+    # show_latent_space()
+    # show_diff_scale_pcl()
+    show_sample_process()
     # train_dataset = ShapeNetData(path='./data/shapenet.hdf5', categories=['airplane'], split='train',
     #                              scale_mode='shape_unit')
     # train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=128, num_workers=0))
