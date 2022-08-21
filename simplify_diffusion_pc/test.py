@@ -105,14 +105,16 @@ def show_diff_scale_pcl():
 
 def show_sample_process():
     # load model
-    ckpt = torch.load('./pretrained/no_z_90000.pt')
+    ckpt = torch.load('./pretrained/no_z_1072000.pt')
+    ckpt['args'].latent_dim = 0
     model = (get_model_by_type(ckpt['args'].model_type, ckpt['args'])).to('cuda')
     model.load_state_dict(ckpt['state_dict'])
 
     z = torch.randn([1, 256]).to('cuda')
     if ckpt['args'].model_type == 'flow':
         z = model.flow(z, reverse=True).view(z.size(0), -1)
-    samples = model.diffusion.reverse_sample(2048, z, ret_traj=True)
+    z = None
+    samples = model.diffusion.reverse_sample(2048, None, batch_size=1, device=torch.device('cuda'), ret_traj=True)
 
     fig = plt.figure()
     for i in range(1, 101):
@@ -163,7 +165,8 @@ if __name__ == "__main__":
     # show_point_cloud()
     # only_leave_latest_file("D:\GEN_2022_07_04__18_50_41")
     # show_latent_space()
-    show_diff_scale_pcl()
+    # show_diff_scale_pcl()
+    show_sample_process()
     # train_dataset = ShapeNetData(path='./data/shapenet.hdf5', categories=['airplane'], split='train',
     #                              scale_mode='shape_unit')
     # train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=128, num_workers=0))
