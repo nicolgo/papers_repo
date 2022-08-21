@@ -25,7 +25,7 @@ class PointWiseNet(Module):
         super().__init__()
         self.residual = residual
         self.layers = ModuleList([
-            ConcatSquashLinear(3, 128, z_context_dim + 3),
+            ConcatSquashLinear(51, 128, z_context_dim + 3),
             ConcatSquashLinear(128, 256, z_context_dim + 3),
             ConcatSquashLinear(256, 512, z_context_dim + 3),
             ConcatSquashLinear(512, 256, z_context_dim + 3),
@@ -42,7 +42,7 @@ class PointWiseNet(Module):
         else:
             beta_with_z = torch.cat([beta, torch.sin(beta), torch.cos(beta)], dim=-1)
 
-        out_put = x
+        out_put = self.encode_x(x)
         for i, layer in enumerate(self.layers):
             out_put = layer(ctx=beta_with_z, x=out_put)
             if i < (len(self.layers) - 1):
@@ -52,6 +52,14 @@ class PointWiseNet(Module):
             return x + out_put
         else:
             return x
+
+    def encode_x(self, x):
+        xs_encoded = [x]
+        for l_pos in range(8):
+            xs_encoded.append(torch.sin(2 ** l_pos * torch.pi * x))
+            xs_encoded.append(torch.cos(2 ** l_pos * torch.pi * x))
+        xs_encoded = torch.cat(xs_encoded, dim=-1)
+        return xs_encoded
 
 
 class DiffusionPoint(Module):
