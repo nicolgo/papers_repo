@@ -132,7 +132,7 @@ class DiffusionPoint(Module):
             x_t = traj[t]
             c1 = (self.alpha_bar_sqrt[t - 1] * self.betas[t]) / (1. - self.alpha_bar[t])
             c2 = (torch.sqrt(self.alpha[t]) * (1 - self.alpha_bar[t - 1])) / (1. - self.alpha_bar[t])
-            epsilon = torch.randn_like(x_t)
+            epsilon = torch.randn_like(x_t) if t > 1 else torch.zeros_like(x_t)
             x_before = c1 * x_0 + c2 * x_t + self.gamma[t] * epsilon
             traj[t - 1] = x_before.detach()
             traj[t] = traj[t].cpu()
