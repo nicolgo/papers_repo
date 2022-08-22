@@ -161,12 +161,35 @@ def save_all_pcd_to_images():
         convert_pcl_to_image(category, 20)
 
 
+# TODO: calculate the kl divergence to measure data distribution
+def calculation_kl_xt_and_standard():
+    batch_size = 1
+    train_dataset = ShapeNetData(path='./data/shapenet.hdf5', categories=['airplane'], split='train',
+                                 scale_mode='shape_unit')
+    train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=batch_size, num_workers=0))
+    batch = next(train_iter)
+    x = batch['point_cloud']
+    diffusion_model = DiffusionPoint()
+    xt_on_x0 = []
+    for i in range(batch_size):
+        xt = diffusion_model.diffusion_process(x[i])
+        xt_on_x0.append(xt[100])
+    xt_on_x0 = torch.stack(xt_on_x0, dim=0)
+    standard_pts = torch.randn(batch_size, 2048, 3)
+    kl_loss = nn.KLDivLoss(reduction="batchmean")
+    kl_output = kl_loss(torch.log(xt_on_x0), standard_pts)
+    print(kl_output)
+    # loss = torch.nn.functional.kl_div(torch.log(standard_pts), xt_on_x0)
+    # print(loss)
+
+
 if __name__ == "__main__":
     # show_point_cloud()
     # only_leave_latest_file("D:\GEN_2022_07_04__18_50_41")
     # show_latent_space()
     # show_diff_scale_pcl()
-    show_sample_process()
+    # show_sample_process()
+    calculation_kl_xt_and_standard()
     # train_dataset = ShapeNetData(path='./data/shapenet.hdf5', categories=['airplane'], split='train',
     #                              scale_mode='shape_unit')
     # train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=128, num_workers=0))
