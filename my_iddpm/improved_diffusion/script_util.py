@@ -1,5 +1,9 @@
 import argparse
 from . import gaussian_diffusion as gd
+from .unet import UNetModel
+from .respace import SpacedDiffusion, space_timesteps
+
+NUM_CLASSES = 1000
 
 
 def create_model_and_diffusion(
@@ -76,7 +80,20 @@ def create_model(
     for res in attention_resolutions.split(","):
         attention_ds.append(image_size//int(res))
 
-    return UNetModel()
+    return UNetModel(
+        in_channels=3,
+        model_channels=num_channels,
+        out_channels=(3 if not learn_sigma else 6),
+        num_res_blocks=num_res_blocks,
+        attention_resolutions=tuple(attention_ds),
+        dropout=dropout,
+        channel_mult=channel_mult,
+        num_classes=(NUM_CLASSES if class_cond else None),
+        use_checkpoint=use_checkpoint,
+        num_heads=num_heads,
+        num_heads_upsample=num_heads_upsample,
+        use_scale_shift_norm=use_scale_shift_norm,
+    )
 
 
 def create_gaussian_diffusion(
@@ -91,7 +108,37 @@ def create_gaussian_diffusion(
         rescale_learned_sigmas=False,
         timestep_respacing="",
 ):
-    return 0
+    # cosin or linear beta schedule
+    betas = 1
+
+    if use_kl:
+        loss_type = gd.LossType.RESCALED_KL
+    elif rescale_learned_sigmas:
+        loss_type = gd.LossType.RESCALED_MSE
+    else:
+        loss_type = gd.LossType.MSE
+
+    if not timestep_respacing:
+        timestep_respacing = [steps]
+
+    return SpacedDiffusion(
+        use_timesteps=space_timesteps(steps, timestep_respacing),
+        betas=betas,
+        model_mean_type=(
+            gd.ModelMeanType.EPSILON if not predict_xstart else gd.ModelMeanType.START_X
+        ),
+        model_var_type=(
+            (
+                gd.ModelVarType.FIXED_LARGE
+                if not sigma_small
+                else gd.ModelVarType.FIXED_SMALL
+            )
+            if not learn_sigma
+            else gd.ModelVarType.LEARNED_RANGE
+        ),
+        loss_type=loss_type,
+        rescale_timesteps=rescale_timesteps,
+    )
 
 
 def model_and_diffusion_defaults():
