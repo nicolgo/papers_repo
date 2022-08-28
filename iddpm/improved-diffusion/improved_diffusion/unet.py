@@ -340,7 +340,7 @@ class UNetModel(nn.Module):
             [
                 TimestepEmbedSequential(conv_nd(dims, in_channels, model_channels, 3, padding=1))
             ])
-        input_block_chans = [model_channels]
+        input_block_chains = [model_channels]
         ch = model_channels
         ds = 1
         for level, mult in enumerate(channel_mult):
@@ -352,10 +352,10 @@ class UNetModel(nn.Module):
                 if ds in attention_resolutions:
                     layers.append(AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=num_heads))
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
-                input_block_chans.append(ch)
+                input_block_chains.append(ch)
             if level != len(channel_mult) - 1:
                 self.input_blocks.append(TimestepEmbedSequential(Downsample(ch, conv_resample, dims=dims)))
-                input_block_chans.append(ch)
+                input_block_chains.append(ch)
                 ds *= 2
 
         self.middle_block = TimestepEmbedSequential(
@@ -370,7 +370,7 @@ class UNetModel(nn.Module):
         for level, mult in list(enumerate(channel_mult))[::-1]:
             for i in range(num_res_blocks + 1):
                 layers = [
-                    ResBlock(ch + input_block_chans.pop(), time_embed_dim, dropout, out_channels=model_channels * mult,
+                    ResBlock(ch + input_block_chains.pop(), time_embed_dim, dropout, out_channels=model_channels * mult,
                              dims=dims, use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm, )]
                 ch = model_channels * mult
                 if ds in attention_resolutions:
