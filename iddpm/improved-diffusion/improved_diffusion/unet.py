@@ -120,15 +120,15 @@ class ResBlock(TimestepBlock):
     """
 
     def __init__(
-        self,
-        channels,
-        emb_channels,
-        dropout,
-        out_channels=None,
-        use_conv=False,
-        use_scale_shift_norm=False,
-        dims=2,
-        use_checkpoint=False,
+            self,
+            channels,
+            emb_channels,
+            dropout,
+            out_channels=None,
+            use_conv=False,
+            use_scale_shift_norm=False,
+            dims=2,
+            use_checkpoint=False,
     ):
         super().__init__()
         self.channels = channels
@@ -146,26 +146,19 @@ class ResBlock(TimestepBlock):
         )
         self.emb_layers = nn.Sequential(
             SiLU(),
-            linear(
-                emb_channels,
-                2 * self.out_channels if use_scale_shift_norm else self.out_channels,
-            ),
+            linear(emb_channels, 2 * self.out_channels if use_scale_shift_norm else self.out_channels, ),
         )
         self.out_layers = nn.Sequential(
             normalization(self.out_channels),
             SiLU(),
             nn.Dropout(p=dropout),
-            zero_module(
-                conv_nd(dims, self.out_channels, self.out_channels, 3, padding=1)
-            ),
+            zero_module(conv_nd(dims, self.out_channels, self.out_channels, 3, padding=1)),
         )
 
         if self.out_channels == channels:
             self.skip_connection = nn.Identity()
         elif use_conv:
-            self.skip_connection = conv_nd(
-                dims, channels, self.out_channels, 3, padding=1
-            )
+            self.skip_connection = conv_nd(dims, channels, self.out_channels, 3, padding=1)
         else:
             self.skip_connection = conv_nd(dims, channels, self.out_channels, 1)
 
@@ -299,21 +292,21 @@ class UNetModel(nn.Module):
     """
 
     def __init__(
-        self,
-        in_channels,
-        model_channels,
-        out_channels,
-        num_res_blocks,
-        attention_resolutions,
-        dropout=0,
-        channel_mult=(1, 2, 4, 8),
-        conv_resample=True,
-        dims=2,
-        num_classes=None,
-        use_checkpoint=False,
-        num_heads=1,
-        num_heads_upsample=-1,
-        use_scale_shift_norm=False,
+            self,
+            in_channels,
+            model_channels,
+            out_channels,
+            num_res_blocks,
+            attention_resolutions,
+            dropout=0,
+            channel_mult=(1, 2, 4, 8),
+            conv_resample=True,
+            dims=2,
+            num_classes=None,
+            use_checkpoint=False,
+            num_heads=1,
+            num_heads_upsample=-1,
+            use_scale_shift_norm=False,
     ):
         super().__init__()
 
@@ -345,86 +338,43 @@ class UNetModel(nn.Module):
 
         self.input_blocks = nn.ModuleList(
             [
-                TimestepEmbedSequential(
-                    conv_nd(dims, in_channels, model_channels, 3, padding=1)
-                )
-            ]
-        )
+                TimestepEmbedSequential(conv_nd(dims, in_channels, model_channels, 3, padding=1))
+            ])
         input_block_chans = [model_channels]
         ch = model_channels
         ds = 1
         for level, mult in enumerate(channel_mult):
             for _ in range(num_res_blocks):
                 layers = [
-                    ResBlock(
-                        ch,
-                        time_embed_dim,
-                        dropout,
-                        out_channels=mult * model_channels,
-                        dims=dims,
-                        use_checkpoint=use_checkpoint,
-                        use_scale_shift_norm=use_scale_shift_norm,
-                    )
-                ]
+                    ResBlock(ch, time_embed_dim, dropout, out_channels=mult * model_channels,
+                             dims=dims, use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm, )]
                 ch = mult * model_channels
                 if ds in attention_resolutions:
-                    layers.append(
-                        AttentionBlock(
-                            ch, use_checkpoint=use_checkpoint, num_heads=num_heads
-                        )
-                    )
+                    layers.append(AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=num_heads))
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
                 input_block_chans.append(ch)
             if level != len(channel_mult) - 1:
-                self.input_blocks.append(
-                    TimestepEmbedSequential(Downsample(ch, conv_resample, dims=dims))
-                )
+                self.input_blocks.append(TimestepEmbedSequential(Downsample(ch, conv_resample, dims=dims)))
                 input_block_chans.append(ch)
                 ds *= 2
 
         self.middle_block = TimestepEmbedSequential(
-            ResBlock(
-                ch,
-                time_embed_dim,
-                dropout,
-                dims=dims,
-                use_checkpoint=use_checkpoint,
-                use_scale_shift_norm=use_scale_shift_norm,
-            ),
+            ResBlock(ch, time_embed_dim, dropout, dims=dims,
+                     use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm, ),
             AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=num_heads),
-            ResBlock(
-                ch,
-                time_embed_dim,
-                dropout,
-                dims=dims,
-                use_checkpoint=use_checkpoint,
-                use_scale_shift_norm=use_scale_shift_norm,
-            ),
+            ResBlock(ch, time_embed_dim, dropout, dims=dims,
+                     use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm, ),
         )
 
         self.output_blocks = nn.ModuleList([])
         for level, mult in list(enumerate(channel_mult))[::-1]:
             for i in range(num_res_blocks + 1):
                 layers = [
-                    ResBlock(
-                        ch + input_block_chans.pop(),
-                        time_embed_dim,
-                        dropout,
-                        out_channels=model_channels * mult,
-                        dims=dims,
-                        use_checkpoint=use_checkpoint,
-                        use_scale_shift_norm=use_scale_shift_norm,
-                    )
-                ]
+                    ResBlock(ch + input_block_chans.pop(), time_embed_dim, dropout, out_channels=model_channels * mult,
+                             dims=dims, use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm, )]
                 ch = model_channels * mult
                 if ds in attention_resolutions:
-                    layers.append(
-                        AttentionBlock(
-                            ch,
-                            use_checkpoint=use_checkpoint,
-                            num_heads=num_heads_upsample,
-                        )
-                    )
+                    layers.append(AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=num_heads_upsample, ))
                 if level and i == num_res_blocks:
                     layers.append(Upsample(ch, conv_resample, dims=dims))
                     ds //= 2
@@ -469,7 +419,7 @@ class UNetModel(nn.Module):
         :return: an [N x C x ...] Tensor of outputs.
         """
         assert (y is not None) == (
-            self.num_classes is not None
+                self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional"
 
         hs = []
@@ -544,4 +494,3 @@ class SuperResModel(UNetModel):
         upsampled = F.interpolate(low_res, (new_height, new_width), mode="bilinear")
         x = th.cat([x, upsampled], dim=1)
         return super().get_feature_vectors(x, timesteps, **kwargs)
-
