@@ -6,7 +6,7 @@ import torch as th
 import torch.utils.tensorboard
 
 from .nn import mean_flat
-from .losses import normal_kl
+from .losses import normal_kl, discretized_gaussian_log_likelihood
 
 
 class ModelMeanType(enum.Enum):
@@ -268,6 +268,114 @@ class GaussianDiffusion:
         ):
             final = sample
         return final["sample"]
+
+    def _vb_terms_bpd(
+            self, model, x_start, x_t, t, clip_denoised=True, model_kwargs=None
+    ):
+        true_mean, _, true_log_variance_clipped = self.q_posterior_mean_variance(
+            x_start=x_start, x_t=x_t, t=t
+        )
+        out = self.p_mean_variance(
+            model, x_t, x, clip_denoised=clip_denoised, model_kwargs=model_kwargs
+        )
+        kl = normal_kl(
+            true_mean, true_log_variance_clipped, out['mean'], out['log_variance']
+        )
+        kl = mean_flat(kl) / np.log(2.0)
+
+        decoder_nll = -discretized_gaussian_log_likelihood(
+            x_start, means=out["mean"], log_scales=0.5 * out["log_variance"])
+        decoder_nll = mean_flat(decoder_nll) / np.log(2.0)
+        output = th.where((t == 0), decoder_nll, kl)
+        return {"output": output, "pred_xstart": out["pred_xstart"]}
+
+    def training_losses(self, model, x_start, t, model_kwargs=None, noise=None):
+        if model_kwargs is None:
+            model_kwargs = {}
+        if noise is None:
+            noise = th.randn_like(x_start)
+        x_t = self.q_sample(x_start, t, noise=noise)
+
+        terms = {}
+        if self.loss_type == LossType.KL or self.loss_type == LossType.RESCALED_KL:
+            terms["loss"] = self._vb_terms_bpd(
+                model=model, x_start=x_start, x_t=x_t, t=t,
+                clip_denoised=False, model_kwargs=model_kwargs,
+            )["output"]
+            if self.loss_type == LossType.RESCALED_KL:
+                terms["loss"] *= self.num_timesteps
+        elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE:
+            model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
+
+            if self.model_var_type in [ModelVarType.LEARNED, ModelVarType.LEARNED_RANGE]:
+                B, C = x_t.shape[:2]
+                model_output, model_var_values = th.split(model_output, C, dim=1)
+                frozen_out = th.cat([model_output.detach(), model_var_values], dim=1)
+                terms["vb"] = self._vb_terms_bpd(
+                    model=lambda *args, r=frozen_out: r,
+                    x_start=x_start, x_t=x_t, t=t, clip_denoised=False
+                )["output"]
+                if self.loss_type == LossType.RESCALED_MSE:
+                    terms["vb"] *= self.num_timesteps / 1000.0
+
+            target = {
+                ModelMeanType.PREVIOUS_X: self.q_posterior_mean_variance(x_start=x_start, x_t=x_t, t=t)[0],
+                ModelMeanType.START_X: x_start,
+                ModelMeanType.EPSILON: noise,
+            }[self.model_mean_type]
+
+            terms["mse"] = mean_flat((target - model_output) ** 2)
+            if "vb" in terms:
+                terms["loss"] = terms["mse"] + terms["vb"]
+            else:
+                terms["loss"] = terms["mse"]
+        else:
+            raise NotImplementedError(self.loss_type)
+
+        return terms
+
+    def _prior_bpd(self, x_start):
+        batch_size = x_start.shape[0]
+        t = th.tensor([self.num_timesteps - 1] * batch_size, device=x_start.device)
+        qt_mean, _, qt_log_variance = self.q_mean_variance(x_start, t)
+        kl_prior = normal_kl(mean1=qt_mean, logvar1=qt_log_variance, mean2=0.0, logvar2=0.0)
+        return mean_flat(kl_prior) / np.log(2.0)
+
+    def calc_bpd_loop(self, model, x_start, clip_denoised=True, model_kwargs=None):
+        device = x_start.device
+        batch_size = x_start.shape[0]
+
+        vb = []
+        xstart_mse = []
+        mse = []
+        for t in list(range(self.num_timesteps))[::-1]:
+            t_batch = th.tensor([t] * batch_size, device=device)
+            noise = th.randn_like(x_start)
+            x_t = self.q_sample(x_start=x_start, t=t_batch, noise=noise)
+            # Calculate VLB term at the current timestep
+            with th.no_grad():
+                out = self._vb_terms_bpd(
+                    model, x_start=x_start, x_t=x_t, t=t_batch,
+                    clip_denoised=clip_denoised, model_kwargs=model_kwargs,
+                )
+            vb.append(out["output"])
+            xstart_mse.append(mean_flat((out["pred_xstart"] - x_start) ** 2))
+            eps = self._predict_eps_from_xstart(x_t, t_batch, out["pred_xstart"])
+            mse.append(mean_flat((eps - noise) ** 2))
+
+        vb = th.stack(vb, dim=1)
+        xstart_mse = th.stack(xstart_mse, dim=1)
+        mse = th.stack(mse, dim=1)
+
+        prior_bpd = self._prior_bpd(x_start)
+        total_bpd = vb.sum(dim=1) + prior_bpd
+        return {
+            "total_bpd": total_bpd,
+            "prior_bpd": prior_bpd,
+            "vb": vb,
+            "xstart_mse": xstart_mse,
+            "mse": mse,
+        }
 
 
 def _extract_into_tensor(arr, timesteps, broadcast_shape):
