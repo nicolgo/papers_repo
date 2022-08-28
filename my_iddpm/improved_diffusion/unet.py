@@ -96,6 +96,18 @@ class ResBlock(TimestepBlock):
 
     def _forward(self, x, emb):
         h = self.in_layers(x)
+        emb_out = self.emb_layers(emb).type(h.dtype)
+        while len(emb_out.shape) < len(h.shape):
+            emb_out = emb_out[..., None]
+        if self.use_scale_shift_norm:
+            out_norm, out_rest = self.out_layers[0], self.out_layers[1:]
+            scale, shift = th.chunk(emb_out, 2, dim=1)
+            h = out_norm(h) * (1 + scale) + shift
+            h = out_rest(h)
+        else:
+            h = h + emb_out
+            h = self.out_layers(h)
+        return self.skip_connection(x) + h
 
 
 class UNetModel(nn.Module):
@@ -143,18 +155,15 @@ class UNetModel(nn.Module):
         if self.num_classes is not None:
             self.label_emb = nn.Embedding(num_classes, time_embed_dim)
         ### input blocks
-        self.input_blocks = nn.ModuleList(
-            [
-                TimestepEmbedSequential(
-                    conv_nd(dims, in_channels, model_channels, 3, padding=1)
-                )
-            ]
-        )
+        self.input_blocks = nn.ModuleList([TimestepEmbedSequential(
+            conv_nd(dims, in_channels, model_channels, 3, padding=1))])
         input_block_chains = [model_channels]
         ch = model_channels
         ds = 1
         for level, mult in enumerate(channel_mult):
             for _ in range(num_res_blocks):
-                layers = [
-                    Res
-                ]
+                layers = [ResBlock(ch, time_embed_dim, dropout, out_channels=mult * model_channels,
+                                   dims=dims, use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm)]
+                ch = mult * model_channels
+                if ds in attention_resolutions:
+                    layers.append()
