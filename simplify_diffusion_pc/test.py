@@ -161,24 +161,43 @@ def save_all_pcd_to_images():
         convert_pcl_to_image(category, 20)
 
 
+def normal_kl(mean1, logvar1, mean2, logvar2):
+    tensor = None
+    for obj in (mean1, logvar1, mean2, logvar2):
+        if isinstance(obj, torch.Tensor):
+            tensor = obj
+            break
+    assert tensor is not None
+
+    logvar1, logvar2 = [x if isinstance(x, torch.Tensor) else torch.tensor(x).to(tensor) for x in (logvar1, logvar2)]
+    # see https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence
+    return 0.5 * (-1 + logvar2 - logvar1 + torch.exp(logvar1 - logvar2) + ((mean1 - mean2) ** 2) * torch.exp(-logvar2))
+
+
+def mean_flat(tensor):
+    """
+    Take the mean over all non-batch dimensions.
+    """
+    return tensor.mean(dim=list(range(1, len(tensor.shape))))
+
+
 # TODO: calculate the kl divergence to measure data distribution
 def calculation_kl_xt_and_standard():
-    batch_size = 1
-    train_dataset = ShapeNetData(path='./data/shapenet.hdf5', categories=['airplane'], split='train',
-                                 scale_mode='shape_unit')
-    train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=batch_size, num_workers=0))
-    batch = next(train_iter)
-    x = batch['point_cloud']
-    diffusion_model = DiffusionPoint()
-    xt_on_x0 = []
-    for i in range(batch_size):
-        xt = diffusion_model.diffusion_process(x[i])
-        xt_on_x0.append(xt[100])
-    xt_on_x0 = torch.stack(xt_on_x0, dim=0)
-    standard_pts = torch.randn(batch_size, 2048, 3)
-    kl_loss = nn.KLDivLoss(reduction="batchmean")
-    kl_output = kl_loss(torch.log(xt_on_x0), standard_pts)
-    print(kl_output)
+    batch_size = 8
+    for scale_mode in ('shape_unit', 'shape_half', 'shape_bbox', 'original'):
+        train_dataset = ShapeNetData(path='./data/shapenet.hdf5', categories=['airplane'], split='train',
+                                     scale_mode=scale_mode)
+        train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=batch_size, num_workers=0))
+        batch = next(train_iter)
+        x = batch['point_cloud']
+        diffusion_model = DiffusionPoint()
+        mean_xt_on_x0 = diffusion_model.alpha_bar_sqrt[100] * x
+        log_var1 = torch.log((1 - diffusion_model.alpha_bar[100]) * torch.ones(x.size()))
+        mean_standard = torch.zeros(x.size())
+        log_var_standard = torch.zeros(x.size())
+        kl = normal_kl(mean_xt_on_x0, log_var1, mean_standard, log_var_standard)
+        kl = mean_flat(kl) / np.log(2.0)
+        print(f'The kl of {scale_mode} is {kl}')
     # loss = torch.nn.functional.kl_div(torch.log(standard_pts), xt_on_x0)
     # print(loss)
 
