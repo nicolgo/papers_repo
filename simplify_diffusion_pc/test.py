@@ -127,8 +127,38 @@ def show_sample_process():
     pass
 
 
+def sample_one_res(check_point_file, noise, batch_size, device):
+    ckpt_flow = torch.load('./pretrained/z_dims/' + check_point_file)
+    model_flow = (get_model_by_type(ckpt_flow['args'].model_type, ckpt_flow['args'])).to('cuda')
+    model_flow.load_state_dict(ckpt_flow['state_dict'])
+    with torch.no_grad():
+        z = torch.randn([batch_size, ckpt_flow['args'].latent_dim]).to(device)
+        z = model_flow.flow(z, reverse=True).view(z.size(0), -1)
+        sample_flow = model_flow.diffusion.reverse_sample(2048, z, batch_size=1, device=device, noise=noise)
+    return sample_flow[0].cpu().numpy()
+
+
+def create_pcl(x_numpy, color):
+    pcl = o3d.geometry.PointCloud()
+    pcl.points = o3d.utility.Vector3dVector(x_numpy)
+    pcl.paint_uniform_color(color)
+    return pcl
+
+
+def compare_sample_z_dim_8421():
+    batch_size = 1
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    noise = torch.randn([batch_size, 2048, 3]).to(device)
+    file_name = ('dim1_548000.pt', 'dim2_545000.pt', 'dim4_548000.pt', 'dim8_547000.pt')
+    colors = ([0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1])
+    pcl_list = []
+    for file, color in zip(file_name, colors):
+        x = sample_one_res(file, noise, batch_size, device)
+        pcl_list.append(create_pcl(x, color))
+    o3d.visualization.draw_geometries(pcl_list)
+
+
 def compare_sample_with_z_and_no_z():
-    samples = []
     batch_size = 1
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     noise = torch.randn([batch_size, 2048, 3]).to(device)
@@ -138,8 +168,7 @@ def compare_sample_with_z_and_no_z():
     model = (get_model_by_type(ckpt['args'].model_type, ckpt['args'])).to(device)
     model.load_state_dict(ckpt['state_dict'])
     with torch.no_grad():
-        sample = model.diffusion.reverse_sample(2048, None, batch_size=1, device=device, noise=noise)
-        samples.append(sample)
+        sample = model.diffusion.reverse_sample(2048, None, batch_size=batch_size, device=device, noise=noise)
 
     ckpt_flow = torch.load('./pretrained/flow_1287000.pt')
     model_flow = (get_model_by_type(ckpt_flow['args'].model_type, ckpt_flow['args'])).to('cuda')
@@ -147,8 +176,7 @@ def compare_sample_with_z_and_no_z():
     with torch.no_grad():
         z = torch.randn([batch_size, ckpt_flow['args'].latent_dim]).to(device)
         z = model_flow.flow(z, reverse=True).view(z.size(0), -1)
-        sample_flow = model_flow.diffusion.reverse_sample(2048, z, batch_size=1, device=device, noise=noise)
-        samples.append(sample_flow)
+        sample_flow = model_flow.diffusion.reverse_sample(2048, z, batch_size=batch_size, device=device, noise=noise)
 
     pcl_list = []
     pcl = o3d.geometry.PointCloud()
@@ -247,6 +275,7 @@ if __name__ == "__main__":
     # show_sample_process()
     # calculation_kl_xt_and_standard()
     compare_sample_with_z_and_no_z()
+    # compare_sample_z_dim_8421()
     # train_dataset = ShapeNetData(path='./data/shapenet.hdf5', categories=['airplane'], split='train',
     #                              scale_mode='shape_unit')
     # train_iter = get_data_iterator(DataLoader(train_dataset, batch_size=128, num_workers=0))
