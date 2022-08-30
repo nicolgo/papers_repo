@@ -94,11 +94,15 @@ class DiffusionPoint(Module):
         loss = F.mse_loss(noise.view(-1, 3), noise_theta.view(-1, 3), reduction='mean')
         return loss
 
-    def reverse_sample(self, num_points, z_context, batch_size=128, device=torch.device('cpu'), ret_traj=False):
+    def reverse_sample(self, num_points, z_context, batch_size=128, device=torch.device('cpu'), ret_traj=False,
+                       noise=None):
         if z_context is not None:
             batch_size = z_context.size(0)
             device = z_context.device
-        x_t = torch.randn([batch_size, num_points, 3]).to(device)
+        if noise is None:
+            x_t = torch.randn([batch_size, num_points, 3]).to(device)
+        else:
+            x_t = noise
         traj = {self.num_steps: x_t}
         for t in range(self.num_steps, 0, -1):
             x_t = traj[t]
