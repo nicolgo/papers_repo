@@ -1,5 +1,5 @@
 import argparse, os, glob
-
+from pytorch_lightning.trainer import Trainer
 
 def get_parser(**parser_kwargs):
     def str2bool(v):
@@ -62,3 +62,19 @@ def check_resume(opt, now):
         nowname = now + name + opt.postfix
         logdir = os.path.join(opt.logdir, nowname)
     return logdir, nowname
+
+
+def nondefault_trainer_args(opt):
+    parser = argparse.ArgumentParser()
+    parser = Trainer.add_argparse_args(parser)
+    args = parser.parse_args([])
+    return sorted(k for k in vars(args) if getattr(opt, k) != getattr(args, k))
+
+def check_gpu_or_cpu(trainer_config):
+    if not "gpus" in trainer_config:
+        del trainer_config["accelerator"]
+        cpu = True
+    else:
+        print(f"Running on GPUs {trainer_config['gpus']}")
+        cpu = False
+    return cpu

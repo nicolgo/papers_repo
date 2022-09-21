@@ -2,8 +2,13 @@ import os, sys, datetime, glob
 import time
 
 from utils import *
+
+from omegaconf import OmegaConf
+
 from pytorch_lightning import seed_everything
 from pytorch_lightning.trainer import Trainer
+
+from ldm.util import instantiate_from_config
 
 if __name__ == "__main__":
     now = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
@@ -18,13 +23,30 @@ if __name__ == "__main__":
                          "If you want to resume training in a new log folder, "
                          "use -n/--name in combination with --resume_from_checkpoint")
 
-    logdir, nowname = check_resume(opt)
+    logdir, nowname = check_resume(opt, now)
 
     ckptdir = os.path.join(logdir, "checkpoints")
     cfgdir = os.path.join(logdir, "configs")
     seed_everything(opt.seed)
 
     try:
+        # init and save configs
+        configs = [OmegaConf.load(cfg) for cfg in opt.base]
+        cli = OmegaConf.from_dotlist(unknown)
+        config = OmegaConf.merge(*configs, cli)
+
+        # lightning config
+        lightning_config = config.pop("lightning", OmegaConf.create())
+        trainer_config = lightning_config.get("trainer", OmegaConf.create())
+        for k in nondefault_trainer_args(opt):
+            trainer_config[k] = getattr(opt, k)
+        cpu = check_gpu_or_cpu(trainer_config)
+        trainer_opt = argparse.Namespace(**trainer_config)
+        lightning_config.trainer = trainer_config
+
+        # model
+        model = instantiate_from_config(config.model)
+
         pass
     except:
         pass
