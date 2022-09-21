@@ -47,7 +47,13 @@ if __name__ == "__main__":
         # model
         model = instantiate_from_config(config.model)
 
-        pass
+        trainer_kwargs = configure_logger(logdir, model, lightning_config, ckptdir, nowname, trainer_opt, opt, config,
+                                          cfgdir, now)
+
+        trainer = Trainer.from_argparse_args(trainer_opt, **trainer_kwargs)
+        trainer.logdir = logdir
+
+
     except:
         if opt.debug and trainer.global_rank == 0:
             try:
