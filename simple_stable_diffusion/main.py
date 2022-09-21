@@ -1,7 +1,7 @@
 import os, sys, datetime, glob
 import time
 
-from utils import *
+from config_utils import *
 
 from omegaconf import OmegaConf
 
@@ -47,12 +47,33 @@ if __name__ == "__main__":
         # model
         model = instantiate_from_config(config.model)
 
+        # logger
         trainer_kwargs = configure_logger(logdir, model, lightning_config, ckptdir, nowname, trainer_opt, opt, config,
                                           cfgdir, now)
 
         trainer = Trainer.from_argparse_args(trainer_opt, **trainer_kwargs)
         trainer.logdir = logdir
 
+        # data
+        data = instantiate_from_config(config.data)
+        # NOTE according to https://pytorch-lightning.readthedocs.io/en/latest/datamodules.html
+        # calling these ourselves should not be necessary but it is.
+        # lightning still takes care of proper multiprocessing though
+        data.prepare_data()
+        data.setup()
+        for k in data.datasets:
+            print(f"{k}, {data.datasets[k].__class__.__name__}, {len(data.datasets[k])}")
+
+        configure_learning_rate(config, model, lightning_config, opt, cpu)
+
+        # run
+        if opt.train:
+            try:
+                trainer.fit(model, data)
+            except Exception:
+                raise
+        if not opt.no_test and not trainer.interrupted:
+            trainer.test(model, data)
 
     except:
         if opt.debug and trainer.global_rank == 0:

@@ -1,0 +1,11 @@
+logs
+.idea
+__pycache__
+src
+latent_diffusion.egg-info
+taming/modules/autoencoder/lpips/vgg.pth
+scripts/outputs
+.vscode/*
+!.vscode/launch.json
+outputs
+models/**/*.ckpt
