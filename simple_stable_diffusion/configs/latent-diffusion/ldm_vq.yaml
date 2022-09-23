@@ -22,10 +22,8 @@ model:
         out_channels: 4
         model_channels: 256
         attention_resolutions:
-        #note: this isn\t actually the resolution but
-        # the downsampling factor, i.e. this corresnponds to
-        # attention on spatial resolution 8,16,32, as the
-        # spatial reolution of the latents is 32 for f8
+        #note: this isn\t actually the resolution but the downsampling factor, i.e. this corresnponds to
+        # attention on spatial resolution 8,16,32, as the spatial reolution of the latents is 32 for f8
         - 4
         - 2
         - 1
