@@ -9,3 +9,4 @@ scripts/outputs
 !.vscode/launch.json
 outputs
 models/**/*.ckpt
+dataset
