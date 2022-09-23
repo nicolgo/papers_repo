@@ -52,3 +52,9 @@ the parameter of autoencoder is saved in the `yaml` config file:
     #           params:
     #               key: value
 ```
+
+## 2.2 second stage: latent diffusion model
+1. run the `main.py` with following parameters
+```
+--base configs/latent-diffusion/ldm_vq.yaml -t --gpus 0,
+```

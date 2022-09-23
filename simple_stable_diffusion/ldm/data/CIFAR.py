@@ -8,6 +8,12 @@ class CustomCIFAR10(Dataset):
 
     def __init__(self):
         self.data_dir = "dataset/CIFAR10/data"
+        self.transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+            ]
+        )
         self.dataset = CIFAR10(self.data_dir, train=self.train, download=True)
         self.data = self.dataset.data
         self.target = self.dataset.targets
@@ -17,7 +23,7 @@ class CustomCIFAR10(Dataset):
 
     def __getitem__(self, idx):
         example = dict()
-        example["image"] = self.data[idx]
+        example["image"] = (self.transform(self.data[idx])).permute(1, 2, 0)
         example["class_label"] = self.target[idx]
         return example
 
