@@ -24,7 +24,9 @@ class CustomCIFAR10(Dataset):
     def __getitem__(self, idx):
         example = dict()
         example["image"] = (self.transform(self.data[idx])).permute(1, 2, 0)
-        example["class_label"] = self.target[idx]
+        idx_of_class = self.target[idx]
+        example["class_label"] = idx_of_class
+        example["human_label"] = self.dataset.classes[idx_of_class]
         return example
 
 
