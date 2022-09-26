@@ -9,7 +9,7 @@ from ldm.modules.distributions.distributions import DiagonalGaussianDistribution
 from ldm.modules.ema import LitEma
 from ldm.util import instantiate_from_config
 from torch.optim.lr_scheduler import LambdaLR
-
+from packaging import version
 
 class AutoencoderKL(pl.LightningModule):
     def __init__(self, ddconfig, lossconfig, embed_dim, ckpt_path=None, ignore_keys=[], image_key="image",

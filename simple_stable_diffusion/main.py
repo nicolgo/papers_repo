@@ -1,6 +1,7 @@
 import os, sys, datetime, glob
 import time
 
+import ldm.modules.losses.vqperceptual
 from config_utils import *
 
 from omegaconf import OmegaConf
@@ -11,6 +12,7 @@ from pytorch_lightning.trainer import Trainer
 from ldm.util import instantiate_from_config
 
 if __name__ == "__main__":
+    os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
     now = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     sys.path.append(os.getcwd())
 
