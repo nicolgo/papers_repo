@@ -57,4 +57,5 @@ the parameter of autoencoder is saved in the `yaml` config file:
 1. run the `main.py` with following parameters
 ```
 --base configs/latent-diffusion/ldm_vq.yaml -t --gpus 0,
+--base configs/latent-diffusion/ldm_kl_CIFAR.yaml -t --gpus 0,
 ```

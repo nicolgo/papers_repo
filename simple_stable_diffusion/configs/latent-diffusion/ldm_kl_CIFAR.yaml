@@ -24,7 +24,7 @@ model:
         attention_resolutions:
         - 2
         - 1
-        num_res_blocks: 2
+        num_res_blocks: 1
         channel_mult:
         - 1
         - 2
@@ -73,7 +73,7 @@ lightning:
     image_logger:
       target: main.ImageLogger
       params:
-        batch_frequency: 5000
+        batch_frequency: 1000
         max_images: 8
         increase_log_steps: False
 
