@@ -11,32 +11,20 @@ if __name__ == "__main__":
 
     # elucidated imagen, which contains the unets above (base unet and super resoluting ones)
 
-    imagen = ElucidatedImagen(
-        unets=(unet1, unet2),
-        image_sizes=(16, 32),
-        random_crop_sizes=(None, 16),
-        num_sample_steps=10,
-        cond_drop_prob=0.1,
-        sigma_min=0.002,  # min noise level
+    imagen = ElucidatedImagen(unets=(unet1, unet2), image_sizes=(16, 32), random_crop_sizes=(None, 16),
+        num_sample_steps=10, cond_drop_prob=0.1, sigma_min=0.002,  # min noise level
         sigma_max=(80, 160),  # max noise level, double the max noise level for upsampler
         sigma_data=0.5,  # standard deviation of data distribution
         rho=7,  # controls the sampling schedule
         P_mean=-1.2,  # mean of log-normal distribution from which noise is drawn for training
         P_std=1.2,  # standard deviation of log-normal distribution from which noise is drawn for training
         S_churn=80,  # parameters for stochastic sampling - depends on dataset, Table 5 in apper
-        S_tmin=0.05,
-        S_tmax=50,
-        S_noise=1.003,
-    ).cuda()
+        S_tmin=0.05, S_tmax=50, S_noise=1.003, ).cuda()
 
     # mock videos (get a lot of this) and text encodings from large T5
 
-    texts = [
-        'a whale breaching from afar',
-        'young girl blowing out candles on her birthday cake',
-        'fireworks with blue and green sparkles',
-        'dust motes swirling in the morning sunshine on the windowsill'
-    ]
+    texts = ['a whale breaching from afar', 'young girl blowing out candles on her birthday cake',
+        'fireworks with blue and green sparkles', 'dust motes swirling in the morning sunshine on the windowsill']
 
     videos = torch.randn(4, 3, 10, 32, 32).cuda()  # (batch, channels, time / video frames, height, width)
 

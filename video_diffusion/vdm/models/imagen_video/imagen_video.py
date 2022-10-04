@@ -152,11 +152,7 @@ def masked_mean(t, *, dim, mask=None):
     return masked_t.sum(dim=dim) / denom.clamp(min=1e-5)
 
 
-def resize_video_to(
-        video,
-        target_image_size,
-        clamp_range=None
-):
+def resize_video_to(video, target_image_size, clamp_range=None):
     orig_video_size = video.shape[-1]
 
     if orig_video_size == target_image_size:
@@ -250,14 +246,7 @@ class Parallel(nn.Module):
 # attention pooling
 
 class PerceiverAttention(nn.Module):
-    def __init__(
-            self,
-            *,
-            dim,
-            dim_head=64,
-            heads=8,
-            cosine_sim_attn=False
-    ):
+    def __init__(self, *, dim, dim_head=64, heads=8, cosine_sim_attn=False):
         super().__init__()
         self.scale = dim_head ** -0.5 if not cosine_sim_attn else 1
         self.cosine_sim_attn = cosine_sim_attn
@@ -272,10 +261,7 @@ class PerceiverAttention(nn.Module):
         self.to_q = nn.Linear(dim, inner_dim, bias=False)
         self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
 
-        self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, dim, bias=False),
-            nn.LayerNorm(dim)
-        )
+        self.to_out = nn.Sequential(nn.Linear(inner_dim, dim, bias=False), nn.LayerNorm(dim))
 
     def forward(self, x, latents, mask=None):
         x = self.norm(x)
@@ -318,19 +304,9 @@ class PerceiverAttention(nn.Module):
 
 
 class PerceiverResampler(nn.Module):
-    def __init__(
-            self,
-            *,
-            dim,
-            depth,
-            dim_head=64,
-            heads=8,
-            num_latents=64,
-            num_latents_mean_pooled=4,  # number of latents derived from mean pooled representation of the sequence
-            max_seq_len=512,
-            ff_mult=4,
-            cosine_sim_attn=False
-    ):
+    def __init__(self, *, dim, depth, dim_head=64, heads=8, num_latents=64, num_latents_mean_pooled=4,
+            # number of latents derived from mean pooled representation of the sequence
+            max_seq_len=512, ff_mult=4, cosine_sim_attn=False):
         super().__init__()
         self.pos_emb = nn.Embedding(max_seq_len, dim)
 
@@ -339,18 +315,14 @@ class PerceiverResampler(nn.Module):
         self.to_latents_from_mean_pooled_seq = None
 
         if num_latents_mean_pooled > 0:
-            self.to_latents_from_mean_pooled_seq = nn.Sequential(
-                LayerNorm(dim),
-                nn.Linear(dim, dim * num_latents_mean_pooled),
-                Rearrange('b (n d) -> b n d', n=num_latents_mean_pooled)
-            )
+            self.to_latents_from_mean_pooled_seq = nn.Sequential(LayerNorm(dim),
+                nn.Linear(dim, dim * num_latents_mean_pooled), Rearrange('b (n d) -> b n d', n=num_latents_mean_pooled))
 
         self.layers = nn.ModuleList([])
         for _ in range(depth):
-            self.layers.append(nn.ModuleList([
-                PerceiverAttention(dim=dim, dim_head=dim_head, heads=heads, cosine_sim_attn=cosine_sim_attn),
-                FeedForward(dim=dim, mult=ff_mult)
-            ]))
+            self.layers.append(nn.ModuleList(
+                [PerceiverAttention(dim=dim, dim_head=dim_head, heads=heads, cosine_sim_attn=cosine_sim_attn),
+                    FeedForward(dim=dim, mult=ff_mult)]))
 
     def forward(self, x, mask=None):
         n, device = x.shape[1], x.device
@@ -375,16 +347,7 @@ class PerceiverResampler(nn.Module):
 # attention
 
 class Attention(nn.Module):
-    def __init__(
-            self,
-            dim,
-            *,
-            dim_head=64,
-            heads=8,
-            causal=False,
-            context_dim=None,
-            cosine_sim_attn=False
-    ):
+    def __init__(self, dim, *, dim_head=64, heads=8, causal=False, context_dim=None, cosine_sim_attn=False):
         super().__init__()
         self.scale = dim_head ** -0.5 if not cosine_sim_attn else 1.
         self.causal = causal
@@ -406,10 +369,7 @@ class Attention(nn.Module):
         self.to_context = nn.Sequential(nn.LayerNorm(context_dim), nn.Linear(context_dim, dim_head * 2)) if exists(
             context_dim) else None
 
-        self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, dim, bias=False),
-            LayerNorm(dim)
-        )
+        self.to_out = nn.Sequential(nn.Linear(inner_dim, dim, bias=False), LayerNorm(dim))
 
     def forward(self, x, context=None, mask=None, attn_bias=None):
         b, n, device = *x.shape[:2], x.device
@@ -510,10 +470,7 @@ class Pad(nn.Module):
 def Upsample(dim, dim_out=None):
     dim_out = default(dim_out, dim)
 
-    return nn.Sequential(
-        nn.Upsample(scale_factor=2, mode='nearest'),
-        Conv2d(dim, dim_out, 3, padding=1)
-    )
+    return nn.Sequential(nn.Upsample(scale_factor=2, mode='nearest'), Conv2d(dim, dim_out, 3, padding=1))
 
 
 class PixelShuffleUpsample(nn.Module):
@@ -522,10 +479,7 @@ class PixelShuffleUpsample(nn.Module):
         dim_out = default(dim_out, dim)
         conv = Conv2d(dim, dim_out * 4, 1)
 
-        self.net = nn.Sequential(
-            conv,
-            nn.SiLU()
-        )
+        self.net = nn.Sequential(conv, nn.SiLU())
 
         self.pixel_shuffle = nn.PixelShuffle(2)
 
@@ -582,13 +536,7 @@ class LearnedSinusoidalPosEmb(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(
-            self,
-            dim,
-            dim_out,
-            groups=8,
-            norm=True
-    ):
+    def __init__(self, dim, dim_out, groups=8, norm=True):
         super().__init__()
         self.groupnorm = nn.GroupNorm(groups, dim) if norm else Identity()
         self.activation = nn.SiLU()
@@ -606,43 +554,22 @@ class Block(nn.Module):
 
 
 class ResnetBlock(nn.Module):
-    def __init__(
-            self,
-            dim,
-            dim_out,
-            *,
-            cond_dim=None,
-            time_cond_dim=None,
-            groups=8,
-            linear_attn=False,
-            use_gca=False,
-            squeeze_excite=False,
-            **attn_kwargs
-    ):
+    def __init__(self, dim, dim_out, *, cond_dim=None, time_cond_dim=None, groups=8, linear_attn=False, use_gca=False,
+            squeeze_excite=False, **attn_kwargs):
         super().__init__()
 
         self.time_mlp = None
 
         if exists(time_cond_dim):
-            self.time_mlp = nn.Sequential(
-                nn.SiLU(),
-                nn.Linear(time_cond_dim, dim_out * 2)
-            )
+            self.time_mlp = nn.Sequential(nn.SiLU(), nn.Linear(time_cond_dim, dim_out * 2))
 
         self.cross_attn = None
 
         if exists(cond_dim):
             attn_klass = CrossAttention if not linear_attn else LinearCrossAttention
 
-            self.cross_attn = EinopsToAndFrom(
-                'b c f h w',
-                'b (f h w) c',
-                attn_klass(
-                    dim=dim_out,
-                    context_dim=cond_dim,
-                    **attn_kwargs
-                )
-            )
+            self.cross_attn = EinopsToAndFrom('b c f h w', 'b (f h w) c',
+                attn_klass(dim=dim_out, context_dim=cond_dim, **attn_kwargs))
 
         self.block1 = Block(dim, dim_out, groups=groups)
         self.block2 = Block(dim_out, dim_out, groups=groups)
@@ -673,16 +600,7 @@ class ResnetBlock(nn.Module):
 
 
 class CrossAttention(nn.Module):
-    def __init__(
-            self,
-            dim,
-            *,
-            context_dim=None,
-            dim_head=64,
-            heads=8,
-            norm_context=False,
-            cosine_sim_attn=False
-    ):
+    def __init__(self, dim, *, context_dim=None, dim_head=64, heads=8, norm_context=False, cosine_sim_attn=False):
         super().__init__()
         self.scale = dim_head ** -0.5 if not cosine_sim_attn else 1.
         self.cosine_sim_attn = cosine_sim_attn
@@ -700,10 +618,7 @@ class CrossAttention(nn.Module):
         self.to_q = nn.Linear(dim, inner_dim, bias=False)
         self.to_kv = nn.Linear(context_dim, inner_dim * 2, bias=False)
 
-        self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, dim, bias=False),
-            LayerNorm(dim)
-        )
+        self.to_out = nn.Sequential(nn.Linear(inner_dim, dim, bias=False), LayerNorm(dim))
 
     def forward(self, x, context, mask=None):
         b, n, device = *x.shape[:2], x.device
@@ -791,15 +706,7 @@ class LinearCrossAttention(CrossAttention):
 
 
 class LinearAttention(nn.Module):
-    def __init__(
-            self,
-            dim,
-            dim_head=32,
-            heads=8,
-            dropout=0.05,
-            context_dim=None,
-            **kwargs
-    ):
+    def __init__(self, dim, dim_head=32, heads=8, dropout=0.05, context_dim=None, **kwargs):
         super().__init__()
         self.scale = dim_head ** -0.5
         self.heads = heads
@@ -808,32 +715,20 @@ class LinearAttention(nn.Module):
 
         self.nonlin = nn.SiLU()
 
-        self.to_q = nn.Sequential(
-            nn.Dropout(dropout),
-            Conv2d(dim, inner_dim, 1, bias=False),
-            Conv2d(inner_dim, inner_dim, 3, bias=False, padding=1, groups=inner_dim)
-        )
+        self.to_q = nn.Sequential(nn.Dropout(dropout), Conv2d(dim, inner_dim, 1, bias=False),
+            Conv2d(inner_dim, inner_dim, 3, bias=False, padding=1, groups=inner_dim))
 
-        self.to_k = nn.Sequential(
-            nn.Dropout(dropout),
-            Conv2d(dim, inner_dim, 1, bias=False),
-            Conv2d(inner_dim, inner_dim, 3, bias=False, padding=1, groups=inner_dim)
-        )
+        self.to_k = nn.Sequential(nn.Dropout(dropout), Conv2d(dim, inner_dim, 1, bias=False),
+            Conv2d(inner_dim, inner_dim, 3, bias=False, padding=1, groups=inner_dim))
 
-        self.to_v = nn.Sequential(
-            nn.Dropout(dropout),
-            Conv2d(dim, inner_dim, 1, bias=False),
-            Conv2d(inner_dim, inner_dim, 3, bias=False, padding=1, groups=inner_dim)
-        )
+        self.to_v = nn.Sequential(nn.Dropout(dropout), Conv2d(dim, inner_dim, 1, bias=False),
+            Conv2d(inner_dim, inner_dim, 3, bias=False, padding=1, groups=inner_dim))
 
         self.to_context = nn.Sequential(nn.LayerNorm(context_dim),
                                         nn.Linear(context_dim, inner_dim * 2, bias=False)) if exists(
             context_dim) else None
 
-        self.to_out = nn.Sequential(
-            Conv2d(inner_dim, dim, 1, bias=False),
-            ChanLayerNorm(dim)
-        )
+        self.to_out = nn.Sequential(Conv2d(inner_dim, dim, 1, bias=False), ChanLayerNorm(dim))
 
     def forward(self, fmap, context=None):
         h, x, y = self.heads, *fmap.shape[-2:]
@@ -865,22 +760,12 @@ class LinearAttention(nn.Module):
 class GlobalContext(nn.Module):
     """ basically a superior form of squeeze-excitation that is attention-esque """
 
-    def __init__(
-            self,
-            *,
-            dim_in,
-            dim_out
-    ):
+    def __init__(self, *, dim_in, dim_out):
         super().__init__()
         self.to_k = Conv2d(dim_in, 1, 1)
         hidden_dim = max(3, dim_out // 2)
 
-        self.net = nn.Sequential(
-            Conv2d(dim_in, hidden_dim, 1),
-            nn.SiLU(),
-            Conv2d(hidden_dim, dim_out, 1),
-            nn.Sigmoid()
-        )
+        self.net = nn.Sequential(Conv2d(dim_in, hidden_dim, 1), nn.SiLU(), Conv2d(hidden_dim, dim_out, 1), nn.Sigmoid())
 
     def forward(self, x):
         context = self.to_k(x)
@@ -892,49 +777,28 @@ class GlobalContext(nn.Module):
 
 def FeedForward(dim, mult=2):
     hidden_dim = int(dim * mult)
-    return nn.Sequential(
-        LayerNorm(dim),
-        nn.Linear(dim, hidden_dim, bias=False),
-        nn.GELU(),
-        LayerNorm(hidden_dim),
-        nn.Linear(hidden_dim, dim, bias=False)
-    )
+    return nn.Sequential(LayerNorm(dim), nn.Linear(dim, hidden_dim, bias=False), nn.GELU(), LayerNorm(hidden_dim),
+        nn.Linear(hidden_dim, dim, bias=False))
 
 
 def ChanFeedForward(dim,
                     mult=2):  # in paper, it seems for self attention layers they did feedforwards with twice channel width
     hidden_dim = int(dim * mult)
-    return nn.Sequential(
-        ChanLayerNorm(dim),
-        Conv2d(dim, hidden_dim, 1, bias=False),
-        nn.GELU(),
-        ChanLayerNorm(hidden_dim),
-        Conv2d(hidden_dim, dim, 1, bias=False)
-    )
+    return nn.Sequential(ChanLayerNorm(dim), Conv2d(dim, hidden_dim, 1, bias=False), nn.GELU(),
+        ChanLayerNorm(hidden_dim), Conv2d(hidden_dim, dim, 1, bias=False))
 
 
 class TransformerBlock(nn.Module):
-    def __init__(
-            self,
-            dim,
-            *,
-            depth=1,
-            heads=8,
-            dim_head=32,
-            ff_mult=2,
-            context_dim=None,
-            cosine_sim_attn=False
-    ):
+    def __init__(self, dim, *, depth=1, heads=8, dim_head=32, ff_mult=2, context_dim=None, cosine_sim_attn=False):
         super().__init__()
         self.layers = nn.ModuleList([])
 
         for _ in range(depth):
-            self.layers.append(nn.ModuleList([
-                EinopsToAndFrom('b c f h w', 'b (f h w) c',
-                                Attention(dim=dim, heads=heads, dim_head=dim_head, context_dim=context_dim,
-                                          cosine_sim_attn=cosine_sim_attn)),
-                ChanFeedForward(dim=dim, mult=ff_mult)
-            ]))
+            self.layers.append(nn.ModuleList([EinopsToAndFrom('b c f h w', 'b (f h w) c',
+                                                              Attention(dim=dim, heads=heads, dim_head=dim_head,
+                                                                        context_dim=context_dim,
+                                                                        cosine_sim_attn=cosine_sim_attn)),
+                ChanFeedForward(dim=dim, mult=ff_mult)]))
 
     def forward(self, x, context=None):
         for attn, ff in self.layers:
@@ -944,25 +808,14 @@ class TransformerBlock(nn.Module):
 
 
 class LinearAttentionTransformerBlock(nn.Module):
-    def __init__(
-            self,
-            dim,
-            *,
-            depth=1,
-            heads=8,
-            dim_head=32,
-            ff_mult=2,
-            context_dim=None,
-            **kwargs
-    ):
+    def __init__(self, dim, *, depth=1, heads=8, dim_head=32, ff_mult=2, context_dim=None, **kwargs):
         super().__init__()
         self.layers = nn.ModuleList([])
 
         for _ in range(depth):
-            self.layers.append(nn.ModuleList([
-                LinearAttention(dim=dim, heads=heads, dim_head=dim_head, context_dim=context_dim),
-                ChanFeedForward(dim=dim, mult=ff_mult)
-            ]))
+            self.layers.append(nn.ModuleList(
+                [LinearAttention(dim=dim, heads=heads, dim_head=dim_head, context_dim=context_dim),
+                    ChanFeedForward(dim=dim, mult=ff_mult)]))
 
     def forward(self, x, context=None):
         for attn, ff in self.layers:
@@ -972,13 +825,7 @@ class LinearAttentionTransformerBlock(nn.Module):
 
 
 class CrossEmbedLayer(nn.Module):
-    def __init__(
-            self,
-            dim_in,
-            kernel_sizes,
-            dim_out=None,
-            stride=2
-    ):
+    def __init__(self, dim_in, kernel_sizes, dim_out=None, stride=2):
         super().__init__()
         assert all([*map(lambda t: (t % 2) == (stride % 2), kernel_sizes)])
         dim_out = default(dim_out, dim_in)
@@ -1000,14 +847,7 @@ class CrossEmbedLayer(nn.Module):
 
 
 class UpsampleCombiner(nn.Module):
-    def __init__(
-            self,
-            dim,
-            *,
-            enabled=False,
-            dim_ins=tuple(),
-            dim_outs=tuple()
-    ):
+    def __init__(self, dim, *, enabled=False, dim_ins=tuple(), dim_outs=tuple()):
         super().__init__()
         dim_outs = cast_tuple(dim_outs, len(dim_ins))
         assert len(dim_ins) == len(dim_outs)
@@ -1035,28 +875,14 @@ class UpsampleCombiner(nn.Module):
 
 
 class DynamicPositionBias(nn.Module):
-    def __init__(
-            self,
-            dim,
-            *,
-            heads,
-            depth
-    ):
+    def __init__(self, dim, *, heads, depth):
         super().__init__()
         self.mlp = nn.ModuleList([])
 
-        self.mlp.append(nn.Sequential(
-            nn.Linear(1, dim),
-            LayerNorm(dim),
-            nn.SiLU()
-        ))
+        self.mlp.append(nn.Sequential(nn.Linear(1, dim), LayerNorm(dim), nn.SiLU()))
 
         for _ in range(max(depth - 1, 0)):
-            self.mlp.append(nn.Sequential(
-                nn.Linear(dim, dim),
-                LayerNorm(dim),
-                nn.SiLU()
-            ))
+            self.mlp.append(nn.Sequential(nn.Linear(dim, dim), LayerNorm(dim), nn.SiLU()))
 
         self.mlp.append(nn.Linear(dim, heads))
 
@@ -1079,58 +905,23 @@ class DynamicPositionBias(nn.Module):
 
 
 class Unet3D(nn.Module):
-    def __init__(
-            self,
-            *,
-            dim,
-            image_embed_dim=1024,
-            text_embed_dim=get_encoded_dim(DEFAULT_T5_NAME),
-            num_resnet_blocks=1,
-            cond_dim=None,
-            num_image_tokens=4,
-            num_time_tokens=2,
-            learned_sinu_pos_emb_dim=16,
-            out_dim=None,
-            dim_mults=(1, 2, 4, 8),
-            cond_images_channels=0,
-            channels=3,
-            channels_out=None,
-            attn_dim_head=64,
-            attn_heads=8,
-            ff_mult=2.,
-            lowres_cond=False,  # for cascading diffusion - https://cascaded-diffusion.github.io/
-            layer_attns=False,
-            layer_attns_depth=1,
-            layer_attns_add_text_cond=True,
+    def __init__(self, *, dim, image_embed_dim=1024, text_embed_dim=get_encoded_dim(DEFAULT_T5_NAME),
+            num_resnet_blocks=1, cond_dim=None, num_image_tokens=4, num_time_tokens=2, learned_sinu_pos_emb_dim=16,
+            out_dim=None, dim_mults=(1, 2, 4, 8), cond_images_channels=0, channels=3, channels_out=None,
+            attn_dim_head=64, attn_heads=8, ff_mult=2., lowres_cond=False,
+            # for cascading diffusion - https://cascaded-diffusion.github.io/
+            layer_attns=False, layer_attns_depth=1, layer_attns_add_text_cond=True,
             # whether to condition the self-attention blocks with the text embeddings, as described in Appendix D.3.1
             attend_at_middle=True,
             # whether to have a layer of attention at the bottleneck (can turn off for higher resolution in cascading DDPM, before bringing in efficient attention)
-            time_rel_pos_bias_depth=2,
-            time_causal_attn=True,
-            layer_cross_attns=True,
-            use_linear_attn=False,
-            use_linear_cross_attn=False,
-            cond_on_text=True,
-            max_text_len=256,
-            init_dim=None,
-            resnet_groups=8,
+            time_rel_pos_bias_depth=2, time_causal_attn=True, layer_cross_attns=True, use_linear_attn=False,
+            use_linear_cross_attn=False, cond_on_text=True, max_text_len=256, init_dim=None, resnet_groups=8,
             init_conv_kernel_size=7,  # kernel size of initial conv, if not using cross embed
-            init_cross_embed=True,
-            init_cross_embed_kernel_sizes=(3, 7, 15),
-            cross_embed_downsample=False,
-            cross_embed_downsample_kernel_sizes=(2, 4),
-            attn_pool_text=True,
-            attn_pool_num_latents=32,
-            dropout=0.,
-            memory_efficient=False,
-            init_conv_to_final_conv_residual=False,
-            use_global_context_attn=True,
-            scale_skip_connection=True,
-            final_resnet_block=True,
-            final_conv_kernel_size=3,
-            cosine_sim_attn=False,
-            self_cond=False,
-            combine_upsample_fmaps=False,
+            init_cross_embed=True, init_cross_embed_kernel_sizes=(3, 7, 15), cross_embed_downsample=False,
+            cross_embed_downsample_kernel_sizes=(2, 4), attn_pool_text=True, attn_pool_num_latents=32, dropout=0.,
+            memory_efficient=False, init_conv_to_final_conv_residual=False, use_global_context_attn=True,
+            scale_skip_connection=True, final_resnet_block=True, final_conv_kernel_size=3, cosine_sim_attn=False,
+            self_cond=False, combine_upsample_fmaps=False,
             # combine feature maps from all upsample blocks, used in unet squared successfully
             pixel_shuffle_upsample=True  # may address checkboard artifacts
     ):
@@ -1189,42 +980,27 @@ class Unet3D(nn.Module):
         sinu_pos_emb = LearnedSinusoidalPosEmb(learned_sinu_pos_emb_dim)
         sinu_pos_emb_input_dim = learned_sinu_pos_emb_dim + 1
 
-        self.to_time_hiddens = nn.Sequential(
-            sinu_pos_emb,
-            nn.Linear(sinu_pos_emb_input_dim, time_cond_dim),
-            nn.SiLU()
-        )
+        self.to_time_hiddens = nn.Sequential(sinu_pos_emb, nn.Linear(sinu_pos_emb_input_dim, time_cond_dim), nn.SiLU())
 
-        self.to_time_cond = nn.Sequential(
-            nn.Linear(time_cond_dim, time_cond_dim)
-        )
+        self.to_time_cond = nn.Sequential(nn.Linear(time_cond_dim, time_cond_dim))
 
         # project to time tokens as well as time hiddens
 
-        self.to_time_tokens = nn.Sequential(
-            nn.Linear(time_cond_dim, cond_dim * num_time_tokens),
-            Rearrange('b (r d) -> b r d', r=num_time_tokens)
-        )
+        self.to_time_tokens = nn.Sequential(nn.Linear(time_cond_dim, cond_dim * num_time_tokens),
+            Rearrange('b (r d) -> b r d', r=num_time_tokens))
 
         # low res aug noise conditioning
 
         self.lowres_cond = lowres_cond
 
         if lowres_cond:
-            self.to_lowres_time_hiddens = nn.Sequential(
-                LearnedSinusoidalPosEmb(learned_sinu_pos_emb_dim),
-                nn.Linear(learned_sinu_pos_emb_dim + 1, time_cond_dim),
-                nn.SiLU()
-            )
+            self.to_lowres_time_hiddens = nn.Sequential(LearnedSinusoidalPosEmb(learned_sinu_pos_emb_dim),
+                nn.Linear(learned_sinu_pos_emb_dim + 1, time_cond_dim), nn.SiLU())
 
-            self.to_lowres_time_cond = nn.Sequential(
-                nn.Linear(time_cond_dim, time_cond_dim)
-            )
+            self.to_lowres_time_cond = nn.Sequential(nn.Linear(time_cond_dim, time_cond_dim))
 
-            self.to_lowres_time_tokens = nn.Sequential(
-                nn.Linear(time_cond_dim, cond_dim * num_time_tokens),
-                Rearrange('b (r d) -> b r d', r=num_time_tokens)
-            )
+            self.to_lowres_time_tokens = nn.Sequential(nn.Linear(time_cond_dim, cond_dim * num_time_tokens),
+                Rearrange('b (r d) -> b r d', r=num_time_tokens))
 
         # normalizations
 
@@ -1260,12 +1036,8 @@ class Unet3D(nn.Module):
         self.to_text_non_attn_cond = None
 
         if cond_on_text:
-            self.to_text_non_attn_cond = nn.Sequential(
-                nn.LayerNorm(cond_dim),
-                nn.Linear(cond_dim, time_cond_dim),
-                nn.SiLU(),
-                nn.Linear(time_cond_dim, time_cond_dim)
-            )
+            self.to_text_non_attn_cond = nn.Sequential(nn.LayerNorm(cond_dim), nn.Linear(cond_dim, time_cond_dim),
+                nn.SiLU(), nn.Linear(time_cond_dim, time_cond_dim))
 
         # attention related params
 
@@ -1360,18 +1132,18 @@ class Unet3D(nn.Module):
                 post_downsample = downsample_klass(current_dim, dim_out) if not is_last else Parallel(
                     Conv2d(dim_in, dim_out, 3, padding=1), Conv2d(dim_in, dim_out, 1))
 
-            self.downs.append(nn.ModuleList([
-                pre_downsample,
+            self.downs.append(nn.ModuleList([pre_downsample,
                 resnet_klass(current_dim, current_dim, cond_dim=layer_cond_dim, linear_attn=layer_use_linear_cross_attn,
-                             time_cond_dim=time_cond_dim, groups=groups),
-                nn.ModuleList([ResnetBlock(current_dim, current_dim, time_cond_dim=time_cond_dim, groups=groups,
-                                           use_gca=use_global_context_attn) for _ in range(layer_num_resnet_blocks)]),
+                             time_cond_dim=time_cond_dim, groups=groups), nn.ModuleList([ResnetBlock(current_dim,
+                                                                                                     current_dim,
+                                                                                                     time_cond_dim=time_cond_dim,
+                                                                                                     groups=groups,
+                                                                                                     use_gca=use_global_context_attn)
+                                                                                         for _ in range(
+                        layer_num_resnet_blocks)]),
                 transformer_block_klass(dim=current_dim, depth=layer_attn_depth, ff_mult=ff_mult, context_dim=cond_dim,
-                                        **attn_kwargs),
-                temporal_peg(current_dim),
-                temporal_attn(current_dim),
-                post_downsample
-            ]))
+                                        **attn_kwargs), temporal_peg(current_dim), temporal_attn(current_dim),
+                post_downsample]))
 
         # middle layers
 
@@ -1406,27 +1178,28 @@ class Unet3D(nn.Module):
 
             upsample_fmap_dims.append(dim_out)
 
-            self.ups.append(nn.ModuleList([
-                resnet_klass(dim_out + skip_connect_dim, dim_out, cond_dim=layer_cond_dim,
-                             linear_attn=layer_use_linear_cross_attn, time_cond_dim=time_cond_dim, groups=groups),
-                nn.ModuleList([ResnetBlock(dim_out + skip_connect_dim, dim_out, time_cond_dim=time_cond_dim,
-                                           groups=groups, use_gca=use_global_context_attn) for _ in
-                               range(layer_num_resnet_blocks)]),
+            self.ups.append(nn.ModuleList([resnet_klass(dim_out + skip_connect_dim, dim_out, cond_dim=layer_cond_dim,
+                                                        linear_attn=layer_use_linear_cross_attn,
+                                                        time_cond_dim=time_cond_dim, groups=groups), nn.ModuleList([
+                                                                                                                       ResnetBlock(
+                                                                                                                           dim_out + skip_connect_dim,
+                                                                                                                           dim_out,
+                                                                                                                           time_cond_dim=time_cond_dim,
+                                                                                                                           groups=groups,
+                                                                                                                           use_gca=use_global_context_attn)
+                                                                                                                       for
+                                                                                                                       _
+                                                                                                                       in
+                                                                                                                       range(
+                                                                                                                           layer_num_resnet_blocks)]),
                 transformer_block_klass(dim=dim_out, depth=layer_attn_depth, ff_mult=ff_mult, context_dim=cond_dim,
-                                        **attn_kwargs),
-                temporal_peg(dim_out),
-                temporal_attn(dim_out),
-                upsample_klass(dim_out, dim_in) if not is_last or memory_efficient else Identity()
-            ]))
+                                        **attn_kwargs), temporal_peg(dim_out), temporal_attn(dim_out),
+                upsample_klass(dim_out, dim_in) if not is_last or memory_efficient else Identity()]))
 
         # whether to combine feature maps from all upsample blocks before final resnet block out
 
-        self.upsample_combiner = UpsampleCombiner(
-            dim=dim,
-            enabled=combine_upsample_fmaps,
-            dim_ins=upsample_fmap_dims,
-            dim_outs=dim
-        )
+        self.upsample_combiner = UpsampleCombiner(dim=dim, enabled=combine_upsample_fmaps, dim_ins=upsample_fmap_dims,
+            dim_outs=dim)
 
         # whether to do a final residual from initial conv to the final resnet block out
 
@@ -1448,29 +1221,13 @@ class Unet3D(nn.Module):
 
     # if the current settings for the unet are not correct
     # for cascading DDPM, then reinit the unet with the right settings
-    def cast_model_parameters(
-            self,
-            *,
-            lowres_cond,
-            text_embed_dim,
-            channels,
-            channels_out,
-            cond_on_text
-    ):
-        if lowres_cond == self.lowres_cond and \
-                channels == self.channels and \
-                cond_on_text == self.cond_on_text and \
-                text_embed_dim == self._locals['text_embed_dim'] and \
-                channels_out == self.channels_out:
+    def cast_model_parameters(self, *, lowres_cond, text_embed_dim, channels, channels_out, cond_on_text):
+        if lowres_cond == self.lowres_cond and channels == self.channels and cond_on_text == self.cond_on_text and text_embed_dim == \
+                self._locals['text_embed_dim'] and channels_out == self.channels_out:
             return self
 
-        updated_kwargs = dict(
-            lowres_cond=lowres_cond,
-            text_embed_dim=text_embed_dim,
-            channels=channels,
-            channels_out=channels_out,
-            cond_on_text=cond_on_text
-        )
+        updated_kwargs = dict(lowres_cond=lowres_cond, text_embed_dim=text_embed_dim, channels=channels,
+            channels_out=channels_out, cond_on_text=cond_on_text)
 
         return self.__class__(**{**self._locals, **updated_kwargs})
 
@@ -1512,12 +1269,7 @@ class Unet3D(nn.Module):
 
     # forward with classifier free guidance
 
-    def forward_with_cond_scale(
-            self,
-            *args,
-            cond_scale=1.,
-            **kwargs
-    ):
+    def forward_with_cond_scale(self, *args, cond_scale=1., **kwargs):
         logits = self.forward(*args, **kwargs)
 
         if cond_scale == 1:
@@ -1526,19 +1278,8 @@ class Unet3D(nn.Module):
         null_logits = self.forward(*args, cond_drop_prob=1., **kwargs)
         return null_logits + (logits - null_logits) * cond_scale
 
-    def forward(
-            self,
-            x,
-            time,
-            *,
-            lowres_cond_img=None,
-            lowres_noise_times=None,
-            text_embeds=None,
-            text_mask=None,
-            cond_images=None,
-            self_cond=None,
-            cond_drop_prob=0.
-    ):
+    def forward(self, x, time, *, lowres_cond_img=None, lowres_noise_times=None, text_embeds=None, text_mask=None,
+            cond_images=None, self_cond=None, cond_drop_prob=0.):
         assert x.ndim == 5, 'input to 3d unet must have 5 dimensions (batch, channels, time, height, width)'
 
         batch_size, frames, device, dtype = x.shape[0], x.shape[2], x.device, x.dtype
@@ -1643,11 +1384,7 @@ class Unet3D(nn.Module):
 
             null_text_embed = self.null_text_embed.to(text_tokens.dtype)  # for some reason pytorch AMP not working
 
-            text_tokens = torch.where(
-                text_keep_mask_embed,
-                text_tokens,
-                null_text_embed
-            )
+            text_tokens = torch.where(text_keep_mask_embed, text_tokens, null_text_embed)
 
             if exists(self.attn_pool):
                 text_tokens = self.attn_pool(text_tokens)
@@ -1661,11 +1398,7 @@ class Unet3D(nn.Module):
 
             null_text_hidden = self.null_text_hidden.to(t.dtype)
 
-            text_hiddens = torch.where(
-                text_keep_mask_hidden,
-                text_hiddens,
-                null_text_hidden
-            )
+            text_hiddens = torch.where(text_keep_mask_hidden, text_hiddens, null_text_hidden)
 
             t = t + text_hiddens
 

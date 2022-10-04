@@ -1,8 +1,8 @@
+from typing import List
 import torch
 import transformers
-from typing import List
-from transformers import T5Tokenizer, T5EncoderModel, T5Config
 from einops import rearrange
+from transformers import T5Tokenizer, T5EncoderModel, T5Config
 
 transformers.logging.set_verbosity_error()
 
@@ -67,10 +67,7 @@ def get_encoded_dim(name):
 
 # encoding text
 
-def t5_tokenize(
-        texts: List[str],
-        name=DEFAULT_T5_NAME
-):
+def t5_tokenize(texts: List[str], name=DEFAULT_T5_NAME):
     t5, tokenizer = get_model_and_tokenizer(name)
 
     if torch.cuda.is_available():
@@ -78,25 +75,15 @@ def t5_tokenize(
 
     device = next(t5.parameters()).device
 
-    encoded = tokenizer.batch_encode_plus(
-        texts,
-        return_tensors="pt",
-        padding='longest',
-        max_length=MAX_LENGTH,
-        truncation=True
-    )
+    encoded = tokenizer.batch_encode_plus(texts, return_tensors="pt", padding='longest', max_length=MAX_LENGTH,
+                                          truncation=True)
 
     input_ids = encoded.input_ids.to(device)
     attn_mask = encoded.attention_mask.to(device)
     return input_ids, attn_mask
 
 
-def t5_encode_tokenized_text(
-        token_ids,
-        attn_mask=None,
-        pad_id=None,
-        name=DEFAULT_T5_NAME
-):
+def t5_encode_tokenized_text(token_ids, attn_mask=None, pad_id=None, name=DEFAULT_T5_NAME):
     assert exists(attn_mask) or exists(pad_id)
     t5, _ = get_model_and_tokenizer(name)
 
@@ -115,11 +102,7 @@ def t5_encode_tokenized_text(
     return encoded_text
 
 
-def t5_encode_text(
-        texts: List[str],
-        name=DEFAULT_T5_NAME,
-        return_attn_mask=False
-):
+def t5_encode_text(texts: List[str], name=DEFAULT_T5_NAME, return_attn_mask=False):
     token_ids, attn_mask = t5_tokenize(texts, name=name)
     encoded_text = t5_encode_tokenized_text(token_ids, attn_mask=attn_mask, name=name)
 

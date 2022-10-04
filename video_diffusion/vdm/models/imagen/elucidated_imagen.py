@@ -1,67 +1,33 @@
+from collections import namedtuple
+from contextlib import contextmanager, nullcontext
+from functools import partial
 from math import sqrt
 from random import random
-from functools import partial
-from contextlib import contextmanager, nullcontext
 from typing import List, Union
-from collections import namedtuple
-from tqdm.auto import tqdm
-
-import torch
-import torch.nn.functional as F
-from torch import nn, einsum
-from torch.cuda.amp import autocast
-from torch.nn.parallel import DistributedDataParallel
-import torchvision.transforms as T
 
 import kornia.augmentation as K
-
+import torch
+import torch.nn.functional as F
+import torchvision.transforms as T
 from einops import rearrange, repeat, reduce
 from einops_exts import rearrange_many
+from torch import nn
+from torch.cuda.amp import autocast
+from torch.nn.parallel import DistributedDataParallel
+from tqdm.auto import tqdm
 
-from vdm.models.imagen.imagen_pytorch import (
-    GaussianDiffusionContinuousTimes,
-    Unet,
-    NullUnet,
-    first,
-    exists,
-    identity,
-    maybe,
-    default,
-    cast_tuple,
-    cast_uint8_images_to_float,
-    is_float_dtype,
-    eval_decorator,
-    check_shape,
-    pad_tuple_to_length,
-    resize_image_to,
-    right_pad_dims_to,
-    module_device,
-    normalize_neg_one_to_one,
-    unnormalize_zero_to_one,
-)
-
-from vdm.models.imagen_video.imagen_video import (
-    Unet3D,
-    resize_video_to
-)
-
+from vdm.models.imagen.imagen_pytorch import (GaussianDiffusionContinuousTimes, Unet, NullUnet, first, exists, identity,
+                                              maybe, default, cast_tuple, cast_uint8_images_to_float, is_float_dtype,
+                                              eval_decorator, check_shape, resize_image_to,
+                                              right_pad_dims_to, module_device, normalize_neg_one_to_one,
+                                              unnormalize_zero_to_one, )
 from vdm.models.imagen.t5 import t5_encode_text, get_encoded_dim, DEFAULT_T5_NAME
+from vdm.models.imagen_video.imagen_video import (Unet3D, resize_video_to)
 
 # constants
 
-Hparams_fields = [
-    'num_sample_steps',
-    'sigma_min',
-    'sigma_max',
-    'sigma_data',
-    'rho',
-    'P_mean',
-    'P_std',
-    'S_churn',
-    'S_tmin',
-    'S_tmax',
-    'S_noise'
-]
+Hparams_fields = ['num_sample_steps', 'sigma_min', 'sigma_max', 'sigma_data', 'rho', 'P_mean', 'P_std', 'S_churn',
+                  'S_tmin', 'S_tmax', 'S_noise']
 
 Hparams = namedtuple('Hparams', Hparams_fields)
 
@@ -75,39 +41,26 @@ def log(t, eps=1e-20):
 # main class
 
 class ElucidatedImagen(nn.Module):
-    def __init__(
-            self,
-            unets,
-            *,
-            image_sizes,  # for cascading ddpm, image size at each stage
-            text_encoder_name=DEFAULT_T5_NAME,
-            text_embed_dim=None,
-            channels=3,
-            cond_drop_prob=0.1,
-            random_crop_sizes=None,
-            lowres_sample_noise_level=0.2,
-            # in the paper, they present a new trick where they noise the lowres conditioning image, and at sample time, fix it to a certain level (0.1 or 0.3) - the unets are also made to be conditioned on this noise level
-            per_sample_random_aug_noise_level=False,
-            # unclear when conditioning on augmentation noise level, whether each batch element receives a random aug noise value - turning off due to @marunine's find
-            condition_on_text=True,
-            auto_normalize_img=True,
-            # whether to take care of normalizing the image from [0, 1] to [-1, 1] and back automatically - you can turn this off if you want to pass in the [-1, 1] ranged image yourself from the dataloader
-            dynamic_thresholding=True,
-            dynamic_thresholding_percentile=0.95,  # unsure what this was based on perusal of paper
-            only_train_unet_number=None,
-            lowres_noise_schedule='linear',
-            num_sample_steps=32,  # number of sampling steps
-            sigma_min=0.002,  # min noise level
-            sigma_max=80,  # max noise level
-            sigma_data=0.5,  # standard deviation of data distribution
-            rho=7,  # controls the sampling schedule
-            P_mean=-1.2,  # mean of log-normal distribution from which noise is drawn for training
-            P_std=1.2,  # standard deviation of log-normal distribution from which noise is drawn for training
-            S_churn=80,  # parameters for stochastic sampling - depends on dataset, Table 5 in apper
-            S_tmin=0.05,
-            S_tmax=50,
-            S_noise=1.003,
-    ):
+    def __init__(self, unets, *, image_sizes,  # for cascading ddpm, image size at each stage
+                 text_encoder_name=DEFAULT_T5_NAME, text_embed_dim=None, channels=3, cond_drop_prob=0.1,
+                 random_crop_sizes=None, lowres_sample_noise_level=0.2,
+                 # in the paper, they present a new trick where they noise the lowres conditioning image, and at sample time, fix it to a certain level (0.1 or 0.3) - the unets are also made to be conditioned on this noise level
+                 per_sample_random_aug_noise_level=False,
+                 # unclear when conditioning on augmentation noise level, whether each batch element receives a random aug noise value - turning off due to @marunine's find
+                 condition_on_text=True, auto_normalize_img=True,
+                 # whether to take care of normalizing the image from [0, 1] to [-1, 1] and back automatically - you can turn this off if you want to pass in the [-1, 1] ranged image yourself from the dataloader
+                 dynamic_thresholding=True, dynamic_thresholding_percentile=0.95,
+                 # unsure what this was based on perusal of paper
+                 only_train_unet_number=None, lowres_noise_schedule='linear', num_sample_steps=32,
+                 # number of sampling steps
+                 sigma_min=0.002,  # min noise level
+                 sigma_max=80,  # max noise level
+                 sigma_data=0.5,  # standard deviation of data distribution
+                 rho=7,  # controls the sampling schedule
+                 P_mean=-1.2,  # mean of log-normal distribution from which noise is drawn for training
+                 P_std=1.2,  # standard deviation of log-normal distribution from which noise is drawn for training
+                 S_churn=80,  # parameters for stochastic sampling - depends on dataset, Table 5 in apper
+                 S_tmin=0.05, S_tmax=50, S_noise=1.003, ):
         super().__init__()
 
         self.only_train_unet_number = only_train_unet_number
@@ -153,13 +106,10 @@ class ElucidatedImagen(nn.Module):
             assert isinstance(one_unet, (Unet, Unet3D, NullUnet))
             is_first = ind == 0
 
-            one_unet = one_unet.cast_model_parameters(
-                lowres_cond=not is_first,
-                cond_on_text=self.condition_on_text,
-                text_embed_dim=self.text_embed_dim if self.condition_on_text else None,
-                channels=self.channels,
-                channels_out=self.channels
-            )
+            one_unet = one_unet.cast_model_parameters(lowres_cond=not is_first, cond_on_text=self.condition_on_text,
+                                                      text_embed_dim=self.text_embed_dim if self.condition_on_text else None,
+                                                      channels=self.channels,
+                                                      channels_out=self.channels)
 
             self.unets.append(one_unet)
 
@@ -207,19 +157,8 @@ class ElucidatedImagen(nn.Module):
 
         # elucidating parameters
 
-        hparams = [
-            num_sample_steps,
-            sigma_min,
-            sigma_max,
-            sigma_data,
-            rho,
-            P_mean,
-            P_std,
-            S_churn,
-            S_tmin,
-            S_tmax,
-            S_noise,
-        ]
+        hparams = [num_sample_steps, sigma_min, sigma_max, sigma_data, rho, P_mean, P_std, S_churn, S_tmin, S_tmax,
+                   S_noise, ]
 
         hparams = [cast_tuple(hp, num_unets) for hp in hparams]
         self.hparams = [Hparams(*unet_hp) for unet_hp in zip(*hparams)]
@@ -298,11 +237,7 @@ class ElucidatedImagen(nn.Module):
         if not dynamic_threshold:
             return x_start.clamp(-1., 1.)
 
-        s = torch.quantile(
-            rearrange(x_start, 'b ... -> b (...)').abs(),
-            self.dynamic_thresholding_percentile,
-            dim=-1
-        )
+        s = torch.quantile(rearrange(x_start, 'b ... -> b (...)').abs(), self.dynamic_thresholding_percentile, dim=-1)
 
         s.clamp_(min=1.)
         s = right_pad_dims_to(x_start, s)
@@ -325,17 +260,8 @@ class ElucidatedImagen(nn.Module):
     # preconditioned network output
     # equation (7) in the paper
 
-    def preconditioned_network_forward(
-            self,
-            unet_forward,
-            noised_images,
-            sigma,
-            *,
-            sigma_data,
-            clamp=False,
-            dynamic_threshold=True,
-            **kwargs
-    ):
+    def preconditioned_network_forward(self, unet_forward, noised_images, sigma, *, sigma_data, clamp=False,
+                                       dynamic_threshold=True, **kwargs):
         batch, device = noised_images.shape[0], noised_images.device
 
         if isinstance(sigma, float):
@@ -343,11 +269,7 @@ class ElucidatedImagen(nn.Module):
 
         padded_sigma = self.right_pad_dims_to_datatype(sigma)
 
-        net_out = unet_forward(
-            self.c_in(sigma_data, padded_sigma) * noised_images,
-            self.c_noise(sigma),
-            **kwargs
-        )
+        net_out = unet_forward(self.c_in(sigma_data, padded_sigma) * noised_images, self.c_noise(sigma), **kwargs)
 
         out = self.c_skip(sigma_data, padded_sigma) * noised_images + self.c_out(sigma_data, padded_sigma) * net_out
 
@@ -361,13 +283,7 @@ class ElucidatedImagen(nn.Module):
     # sample schedule
     # equation (5) in the paper
 
-    def sample_schedule(
-            self,
-            num_sample_steps,
-            rho,
-            sigma_min,
-            sigma_max
-    ):
+    def sample_schedule(self, num_sample_steps, rho, sigma_min, sigma_max):
         N = num_sample_steps
         inv_rho = 1 / rho
 
@@ -378,25 +294,10 @@ class ElucidatedImagen(nn.Module):
         return sigmas
 
     @torch.no_grad()
-    def one_unet_sample(
-            self,
-            unet,
-            shape,
-            *,
-            unet_number,
-            clamp=True,
-            dynamic_threshold=True,
-            cond_scale=1.,
-            use_tqdm=True,
-            inpaint_images=None,
-            inpaint_masks=None,
-            inpaint_resample_times=5,
-            init_images=None,
-            skip_steps=None,
-            sigma_min=None,
-            sigma_max=None,
-            **kwargs
-    ):
+    def one_unet_sample(self, unet, shape, *, unet_number, clamp=True, dynamic_threshold=True, cond_scale=1.,
+                        use_tqdm=True, inpaint_images=None, inpaint_masks=None, inpaint_resample_times=5,
+                        init_images=None,
+                        skip_steps=None, sigma_min=None, sigma_max=None, **kwargs):
         # get specific sampling hyperparameters for unet
 
         hp = self.hparams[unet_number - 1]
@@ -408,11 +309,8 @@ class ElucidatedImagen(nn.Module):
 
         sigmas = self.sample_schedule(hp.num_sample_steps, hp.rho, sigma_min, sigma_max)
 
-        gammas = torch.where(
-            (sigmas >= hp.S_tmin) & (sigmas <= hp.S_tmax),
-            min(hp.S_churn / hp.num_sample_steps, sqrt(2) - 1),
-            0.
-        )
+        gammas = torch.where((sigmas >= hp.S_tmin) & (sigmas <= hp.S_tmax),
+                             min(hp.S_churn / hp.num_sample_steps, sqrt(2) - 1), 0.)
 
         sigmas_and_gammas = list(zip(sigmas[:-1], sigmas[1:], gammas[:-1]))
 
@@ -443,13 +341,8 @@ class ElucidatedImagen(nn.Module):
 
         # unet kwargs
 
-        unet_kwargs = dict(
-            sigma_data=hp.sigma_data,
-            clamp=clamp,
-            dynamic_threshold=dynamic_threshold,
-            cond_scale=cond_scale,
-            **kwargs
-        )
+        unet_kwargs = dict(sigma_data=hp.sigma_data, clamp=clamp, dynamic_threshold=dynamic_threshold,
+                           cond_scale=cond_scale, **kwargs)
 
         # gradually denoise
 
@@ -479,13 +372,8 @@ class ElucidatedImagen(nn.Module):
                 if has_inpainting:
                     images_hat = images_hat * ~inpaint_masks + (inpaint_images + added_noise) * inpaint_masks
 
-                model_output = self.preconditioned_network_forward(
-                    unet.forward_with_cond_scale,
-                    images_hat,
-                    sigma_hat,
-                    self_cond=self_cond,
-                    **unet_kwargs
-                )
+                model_output = self.preconditioned_network_forward(unet.forward_with_cond_scale, images_hat, sigma_hat,
+                                                                   self_cond=self_cond, **unet_kwargs)
 
                 denoised_over_sigma = (images_hat - model_output) / sigma_hat
 
@@ -496,13 +384,9 @@ class ElucidatedImagen(nn.Module):
                 if sigma_next != 0:
                     self_cond = model_output if unet.self_cond else None
 
-                    model_output_next = self.preconditioned_network_forward(
-                        unet.forward_with_cond_scale,
-                        images_next,
-                        sigma_next,
-                        self_cond=self_cond,
-                        **unet_kwargs
-                    )
+                    model_output_next = self.preconditioned_network_forward(unet.forward_with_cond_scale, images_next,
+                                                                            sigma_next, self_cond=self_cond,
+                                                                            **unet_kwargs)
 
                     denoised_prime_over_sigma = (images_next - model_output_next) / sigma_next
                     images_next = images_hat + 0.5 * (sigma_next - sigma_hat) * (
@@ -526,31 +410,12 @@ class ElucidatedImagen(nn.Module):
 
     @torch.no_grad()
     @eval_decorator
-    def sample(
-            self,
-            texts: List[str] = None,
-            text_masks=None,
-            text_embeds=None,
-            cond_images=None,
-            inpaint_images=None,
-            inpaint_masks=None,
-            inpaint_resample_times=5,
-            init_images=None,
-            skip_steps=None,
-            sigma_min=None,
-            sigma_max=None,
-            video_frames=None,
-            batch_size=1,
-            cond_scale=1.,
-            lowres_sample_noise_level=None,
-            start_at_unet_number=1,
-            start_image_or_video=None,
-            stop_at_unet_number=None,
-            return_all_unet_outputs=False,
-            return_pil_images=False,
-            use_tqdm=True,
-            device=None,
-    ):
+    def sample(self, texts: List[str] = None, text_masks=None, text_embeds=None, cond_images=None, inpaint_images=None,
+               inpaint_masks=None, inpaint_resample_times=5, init_images=None, skip_steps=None, sigma_min=None,
+               sigma_max=None, video_frames=None, batch_size=1, cond_scale=1., lowres_sample_noise_level=None,
+               start_at_unet_number=1, start_image_or_video=None, stop_at_unet_number=None,
+               return_all_unet_outputs=False,
+               return_pil_images=False, use_tqdm=True, device=None, ):
         device = default(device, self.device)
         self.reset_unets_all_one_device(device=device)
 
@@ -662,26 +527,15 @@ class ElucidatedImagen(nn.Module):
 
                 shape = (batch_size, self.channels, *frame_dims, image_size, image_size)
 
-                img = self.one_unet_sample(
-                    unet,
-                    shape,
-                    unet_number=unet_number,
-                    text_embeds=text_embeds,
-                    text_mask=text_masks,
-                    cond_images=cond_images,
-                    inpaint_images=inpaint_images,
-                    inpaint_masks=inpaint_masks,
-                    inpaint_resample_times=inpaint_resample_times,
-                    init_images=unet_init_images,
-                    skip_steps=unet_skip_steps,
-                    sigma_min=unet_sigma_min,
-                    sigma_max=unet_sigma_max,
-                    cond_scale=unet_cond_scale,
-                    lowres_cond_img=lowres_cond_img,
-                    lowres_noise_times=lowres_noise_times,
-                    dynamic_threshold=dynamic_threshold,
-                    use_tqdm=use_tqdm
-                )
+                img = self.one_unet_sample(unet, shape, unet_number=unet_number, text_embeds=text_embeds,
+                                           text_mask=text_masks, cond_images=cond_images, inpaint_images=inpaint_images,
+                                           inpaint_masks=inpaint_masks, inpaint_resample_times=inpaint_resample_times,
+                                           init_images=unet_init_images, skip_steps=unet_skip_steps,
+                                           sigma_min=unet_sigma_min,
+                                           sigma_max=unet_sigma_max, cond_scale=unet_cond_scale,
+                                           lowres_cond_img=lowres_cond_img,
+                                           lowres_noise_times=lowres_noise_times, dynamic_threshold=dynamic_threshold,
+                                           use_tqdm=use_tqdm)
 
                 outputs.append(img)
 
@@ -712,16 +566,8 @@ class ElucidatedImagen(nn.Module):
     def noise_distribution(self, P_mean, P_std, batch_size):
         return (P_mean + P_std * torch.randn((batch_size,), device=self.device)).exp()
 
-    def forward(
-            self,
-            images,
-            unet: Union[Unet, Unet3D, NullUnet, DistributedDataParallel] = None,
-            texts: List[str] = None,
-            text_embeds=None,
-            text_masks=None,
-            unet_number=None,
-            cond_images=None
-    ):
+    def forward(self, images, unet: Union[Unet, Unet3D, NullUnet, DistributedDataParallel] = None,
+                texts: List[str] = None, text_embeds=None, text_masks=None, unet_number=None, cond_images=None):
         assert images.shape[-1] == images.shape[
             -2], f'the images you pass in must be a square, but received dimensions of {images.shape[2]}, {images.shape[-1]}'
         assert not (len(self.unets) > 1 and not exists(
@@ -831,15 +677,10 @@ class ElucidatedImagen(nn.Module):
 
         # unet kwargs
 
-        unet_kwargs = dict(
-            sigma_data=hp.sigma_data,
-            text_embeds=text_embeds,
-            text_mask=text_masks,
-            cond_images=cond_images,
-            lowres_noise_times=self.lowres_noise_schedule.get_condition(lowres_aug_times),
-            lowres_cond_img=lowres_cond_img_noisy,
-            cond_drop_prob=self.cond_drop_prob,
-        )
+        unet_kwargs = dict(sigma_data=hp.sigma_data, text_embeds=text_embeds, text_mask=text_masks,
+                           cond_images=cond_images,
+                           lowres_noise_times=self.lowres_noise_schedule.get_condition(lowres_aug_times),
+                           lowres_cond_img=lowres_cond_img_noisy, cond_drop_prob=self.cond_drop_prob, )
 
         # self conditioning - https://arxiv.org/abs/2208.04202 - training will be 25% slower
 
@@ -850,23 +691,14 @@ class ElucidatedImagen(nn.Module):
 
         if self_cond and random() < 0.5:
             with torch.no_grad():
-                pred_x0 = self.preconditioned_network_forward(
-                    unet.forward,
-                    noised_images,
-                    sigmas,
-                    **unet_kwargs
-                ).detach()
+                pred_x0 = self.preconditioned_network_forward(unet.forward, noised_images, sigmas,
+                                                              **unet_kwargs).detach()
 
             unet_kwargs = {**unet_kwargs, 'self_cond': pred_x0}
 
         # get prediction
 
-        denoised_images = self.preconditioned_network_forward(
-            unet.forward,
-            noised_images,
-            sigmas,
-            **unet_kwargs
-        )
+        denoised_images = self.preconditioned_network_forward(unet.forward, noised_images, sigmas, **unet_kwargs)
 
         # losses
 

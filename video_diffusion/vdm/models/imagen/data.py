@@ -1,12 +1,10 @@
-from pathlib import Path
 from functools import partial
-
-import torch
-from torch import nn
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms as T, utils
+from pathlib import Path
 
 from PIL import Image
+from torch import nn
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms as T
 
 
 # helpers functions

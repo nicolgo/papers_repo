@@ -1,37 +1,28 @@
 import os
-import time
-import copy
-from pathlib import Path
-from math import ceil
+from collections.abc import Iterable
 from contextlib import contextmanager, nullcontext
 from functools import partial, wraps
-from collections.abc import Iterable
-
-import torch
-from torch import nn
-import torch.nn.functional as F
-from torch.utils.data import random_split, DataLoader
-from torch.optim import Adam
-from torch.optim.lr_scheduler import CosineAnnealingLR, LambdaLR
-from torch.cuda.amp import autocast, GradScaler
-
-import pytorch_warmup as warmup
-
-from vdm.models.imagen.imagen_pytorch import Imagen, NullUnet
-from vdm.models.imagen.elucidated_imagen import ElucidatedImagen
-from vdm.models.imagen.data import cycle
-
-from vdm.models.imagen.version import __version__
-from packaging import version
+from math import ceil
 
 import numpy as np
-
-from ema_pytorch import EMA
-
+import pytorch_warmup as warmup
+import torch
+import torch.nn.functional as F
 from accelerate import Accelerator, DistributedType, DistributedDataParallelKwargs
-
+from ema_pytorch import EMA
 from fsspec.core import url_to_fs
 from fsspec.implementations.local import LocalFileSystem
+from packaging import version
+from torch import nn
+from torch.cuda.amp import GradScaler
+from torch.optim import Adam
+from torch.optim.lr_scheduler import CosineAnnealingLR, LambdaLR
+from torch.utils.data import random_split, DataLoader
+
+from vdm.models.imagen.data import cycle
+from vdm.models.imagen.elucidated_imagen import ElucidatedImagen
+from vdm.models.imagen.imagen_pytorch import Imagen, NullUnet
+from vdm.models.imagen.version import __version__
 
 
 # helper functions
