@@ -28,6 +28,7 @@ from torchvision.datasets.folder import make_dataset
 from torchvision.datasets.video_utils import VideoClips
 
 import vdm.modules.dnnlib as dnnlib
+from utils.vision_util import save_image_grid
 
 try:
     import pyspng
@@ -714,5 +715,18 @@ if __name__ == "__main__":
     dataset = UCF101Wrapper(data_path, False, 128, data_path, xflip=False, return_vid=True)
 
     test_iterator = iter(torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True))
-    value = next(test_iterator)
+    video = next(test_iterator)
+    import math
+
+    num_videos = 1
+    device = torch.device('cuda')
+    grid_size = (int(math.sqrt(num_videos)), int(math.sqrt(num_videos)))
+    grid_z = torch.randn([int(grid_size[0] * grid_size[1]), 3], device=device).split(1)
+    # images = torch.cat([rearrange(video.cpu(), '(b t) c h w -> b c t h w', t=16) for z in grid_z]).numpy()
+    images = torch.cat([video.cpu() for z in grid_z]).numpy()
+    from root_dir import ROOT_DIR
+
+    out_dir = ROOT_DIR + "/outputs"
+    os.makedirs(out_dir, exist_ok=True)
+    save_image_grid(images, os.path.join(out_dir, f'generate_videos.gif'), drange=[-1, 1], grid_size=grid_size)
     pass
