@@ -38,7 +38,8 @@ class Dataset(Dataset):
         super().__init__()
         self.folder = folder
         self.image_size = image_size
-        self.paths = [p for ext in exts for p in Path(f'{folder}').glob(f'**/*.{ext}')]
+        self.paths = [p for ext in exts for p in Path(
+            f'{folder}').glob(f'**/*.{ext}')]
 
         convert_fn = partial(convert_image_to, convert_image_to_type) if exists(
             convert_image_to_type) else nn.Identity()
@@ -70,7 +71,8 @@ def get_images_dataloader(
         pin_memory=True
 ):
     ds = Dataset(folder, image_size)
-    dl = DataLoader(ds, batch_size=batch_size, shuffle=shuffle, pin_memory=pin_memory)
+    dl = DataLoader(ds, batch_size=batch_size,
+                    shuffle=shuffle, pin_memory=pin_memory)
 
     if cycle_dl:
         dl = cycle(dl)

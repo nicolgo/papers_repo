@@ -1184,14 +1184,9 @@ class Unet(nn.Module):
             self.downs.append(nn.ModuleList([pre_downsample,
                                              resnet_klass(current_dim, current_dim, cond_dim=layer_cond_dim,
                                                           linear_attn=layer_use_linear_cross_attn,
-                                                          time_cond_dim=time_cond_dim, groups=groups),
-                                             nn.ModuleList([ResnetBlock(current_dim,
-                                                                        current_dim,
-                                                                        time_cond_dim=time_cond_dim,
-                                                                        groups=groups,
-                                                                        use_gca=use_global_context_attn)
-                                                            for _ in range(
-                                                     layer_num_resnet_blocks)]),
+                                                          time_cond_dim=time_cond_dim, groups=groups), nn.ModuleList([
+                    ResnetBlock(current_dim, current_dim, time_cond_dim=time_cond_dim, groups=groups,
+                        use_gca=use_global_context_attn) for _ in range(layer_num_resnet_blocks)]),
                                              transformer_block_klass(dim=current_dim, depth=layer_attn_depth,
                                                                      ff_mult=ff_mult, context_dim=cond_dim,
                                                                      **attn_kwargs), post_downsample]))
@@ -1236,20 +1231,10 @@ class Unet(nn.Module):
             self.ups.append(nn.ModuleList([resnet_klass(dim_out + skip_connect_dim, dim_out, cond_dim=layer_cond_dim,
                                                         linear_attn=layer_use_linear_cross_attn,
                                                         time_cond_dim=time_cond_dim, groups=groups), nn.ModuleList([
-                ResnetBlock(
-                    dim_out + skip_connect_dim,
-                    dim_out,
-                    time_cond_dim=time_cond_dim,
-                    groups=groups,
-                    use_gca=use_global_context_attn)
-                for
-                _
-                in
-                range(
-                    layer_num_resnet_blocks)]),
+                ResnetBlock(dim_out + skip_connect_dim, dim_out, time_cond_dim=time_cond_dim, groups=groups,
+                            use_gca=use_global_context_attn) for _ in range(layer_num_resnet_blocks)]),
                                            transformer_block_klass(dim=dim_out, depth=layer_attn_depth, ff_mult=ff_mult,
-                                                                   context_dim=cond_dim,
-                                                                   **attn_kwargs),
+                                                                   context_dim=cond_dim, **attn_kwargs),
                                            upsample_klass(dim_out,
                                                           dim_in) if not is_last or memory_efficient else Identity()]))
 
@@ -1430,7 +1415,8 @@ class Unet(nn.Module):
                 text_mask = rearrange(text_mask, 'b n -> b n 1')
                 text_keep_mask_embed = text_mask & text_keep_mask_embed
 
-            null_text_embed = self.null_text_embed.to(text_tokens.dtype)  # for some reason pytorch AMP not working
+            # for some reason pytorch AMP not working
+            null_text_embed = self.null_text_embed.to(text_tokens.dtype)
 
             text_tokens = torch.where(text_keep_mask_embed, text_tokens, null_text_embed)
 
@@ -1459,12 +1445,10 @@ class Unet(nn.Module):
         c = self.norm_cond(c)
 
         # initial resnet block (for memory efficient unet)
-
         if exists(self.init_resnet_block):
             x = self.init_resnet_block(x, t)
 
         # go through the layers of the unet, down and up
-
         hiddens = []
 
         for pre_downsample, init_block, resnet_blocks, attn_block, post_downsample in self.downs:
@@ -1490,7 +1474,8 @@ class Unet(nn.Module):
 
         x = self.mid_block2(x, t, c)
 
-        add_skip_connection = lambda x: torch.cat((x, hiddens.pop() * self.skip_connect_scale), dim=1)
+        def add_skip_connection(x):
+            return torch.cat((x, hiddens.pop() * self.skip_connect_scale), dim=1)
 
         up_hiddens = []
 
@@ -1545,8 +1530,7 @@ class BaseUnet64(Unet):
     def __init__(self, *args, **kwargs):
         default_kwargs = dict(dim=512, dim_mults=(1, 2, 3, 4), num_resnet_blocks=3,
                               layer_attns=(False, True, True, True), layer_cross_attns=(False, True, True, True),
-                              attn_heads=8,
-                              ff_mult=2., memory_efficient=False)
+                              attn_heads=8, ff_mult=2., memory_efficient=False)
         super().__init__(*args, **{**default_kwargs, **kwargs})
 
 
@@ -1554,8 +1538,7 @@ class SRUnet256(Unet):
     def __init__(self, *args, **kwargs):
         default_kwargs = dict(dim=128, dim_mults=(1, 2, 4, 8), num_resnet_blocks=(2, 4, 8, 8),
                               layer_attns=(False, False, False, True), layer_cross_attns=(False, False, False, True),
-                              attn_heads=8,
-                              ff_mult=2., memory_efficient=True)
+                              attn_heads=8, ff_mult=2., memory_efficient=True)
         super().__init__(*args, **{**default_kwargs, **kwargs})
 
 
@@ -1659,7 +1642,8 @@ class Imagen(nn.Module):
 
         self.unets = nn.ModuleList([])
 
-        self.unet_being_trained_index = -1  # keeps track of which unet is being trained at the moment
+        # keeps track of which unet is being trained at the moment
+        self.unet_being_trained_index = -1
         self.only_train_unet_number = only_train_unet_number
 
         for ind, one_unet in enumerate(unets):
@@ -1668,8 +1652,7 @@ class Imagen(nn.Module):
 
             one_unet = one_unet.cast_model_parameters(lowres_cond=not is_first, cond_on_text=self.condition_on_text,
                                                       text_embed_dim=self.text_embed_dim if self.condition_on_text else None,
-                                                      channels=self.channels,
-                                                      channels_out=self.channels)
+                                                      channels=self.channels, channels_out=self.channels)
 
             self.unets.append(one_unet)
 
@@ -1909,10 +1892,9 @@ class Imagen(nn.Module):
 
                 img, x_start = self.p_sample(unet, img, times, t_next=times_next, text_embeds=text_embeds,
                                              text_mask=text_mask, cond_images=cond_images, cond_scale=cond_scale,
-                                             self_cond=self_cond,
-                                             lowres_cond_img=lowres_cond_img, lowres_noise_times=lowres_noise_times,
-                                             noise_scheduler=noise_scheduler, pred_objective=pred_objective,
-                                             dynamic_threshold=dynamic_threshold)
+                                             self_cond=self_cond, lowres_cond_img=lowres_cond_img,
+                                             lowres_noise_times=lowres_noise_times, noise_scheduler=noise_scheduler,
+                                             pred_objective=pred_objective, dynamic_threshold=dynamic_threshold)
 
                 if has_inpainting and not (is_last_resample_step or torch.all(is_last_timestep)):
                     renoised_img = noise_scheduler.q_sample_from_to(img, times_next, times)
@@ -1935,8 +1917,7 @@ class Imagen(nn.Module):
                inpaint_images=None, inpaint_masks=None, inpaint_resample_times=5, init_images=None, skip_steps=None,
                batch_size=1, cond_scale=1., lowres_sample_noise_level=None, start_at_unet_number=1,
                start_image_or_video=None, stop_at_unet_number=None, return_all_unet_outputs=False,
-               return_pil_images=False,
-               device=None, use_tqdm=True):
+               return_pil_images=False, device=None, use_tqdm=True):
         device = default(device, self.device)
         self.reset_unets_all_one_device(device=device)
 
@@ -2050,10 +2031,9 @@ class Imagen(nn.Module):
 
                 img = self.p_sample_loop(unet, shape, text_embeds=text_embeds, text_mask=text_masks,
                                          cond_images=cond_images, inpaint_images=inpaint_images,
-                                         inpaint_masks=inpaint_masks,
-                                         inpaint_resample_times=inpaint_resample_times, init_images=unet_init_images,
-                                         skip_steps=unet_skip_steps, cond_scale=unet_cond_scale,
-                                         lowres_cond_img=lowres_cond_img,
+                                         inpaint_masks=inpaint_masks, inpaint_resample_times=inpaint_resample_times,
+                                         init_images=unet_init_images, skip_steps=unet_skip_steps,
+                                         cond_scale=unet_cond_scale, lowres_cond_img=lowres_cond_img,
                                          lowres_noise_times=lowres_noise_times, noise_scheduler=noise_scheduler,
                                          pred_objective=pred_objective, dynamic_threshold=dynamic_threshold,
                                          use_tqdm=use_tqdm)
@@ -2081,8 +2061,7 @@ class Imagen(nn.Module):
 
     def p_losses(self, unet: Union[Unet, Unet3D, NullUnet, DistributedDataParallel], x_start, times, *, noise_scheduler,
                  lowres_cond_img=None, lowres_aug_times=None, text_embeds=None, text_mask=None, cond_images=None,
-                 noise=None,
-                 times_next=None, pred_objective='noise', p2_loss_weight_gamma=0., random_crop_size=None):
+                 noise=None, times_next=None, pred_objective='noise', p2_loss_weight_gamma=0., random_crop_size=None):
         is_video = x_start.ndim == 5
 
         noise = default(noise, lambda: torch.randn_like(x_start))

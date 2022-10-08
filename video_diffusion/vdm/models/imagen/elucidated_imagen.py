@@ -18,9 +18,8 @@ from tqdm.auto import tqdm
 
 from vdm.models.imagen.imagen_pytorch import (GaussianDiffusionContinuousTimes, Unet, NullUnet, first, exists, identity,
                                               maybe, default, cast_tuple, cast_uint8_images_to_float, is_float_dtype,
-                                              eval_decorator, check_shape, resize_image_to,
-                                              right_pad_dims_to, module_device, normalize_neg_one_to_one,
-                                              unnormalize_zero_to_one, )
+                                              eval_decorator, check_shape, resize_image_to, right_pad_dims_to,
+                                              module_device, normalize_neg_one_to_one, unnormalize_zero_to_one, )
 from vdm.models.imagen.t5 import t5_encode_text, get_encoded_dim, DEFAULT_T5_NAME
 from vdm.models.imagen_video.imagen_video import (Unet3D, resize_video_to)
 
@@ -66,64 +65,51 @@ class ElucidatedImagen(nn.Module):
         self.only_train_unet_number = only_train_unet_number
 
         # conditioning hparams
-
         self.condition_on_text = condition_on_text
         self.unconditional = not condition_on_text
 
         # channels
-
         self.channels = channels
 
         # automatically take care of ensuring that first unet is unconditional
         # while the rest of the unets are conditioned on the low resolution image produced by previous unet
-
         unets = cast_tuple(unets)
         num_unets = len(unets)
 
         # randomly cropping for upsampler training
-
         self.random_crop_sizes = cast_tuple(random_crop_sizes, num_unets)
         assert not exists(first(
             self.random_crop_sizes)), 'you should not need to randomly crop image during training for base unet, only for upsamplers - so pass in `random_crop_sizes = (None, 128, 256)` as example'
 
         # lowres augmentation noise schedule
-
         self.lowres_noise_schedule = GaussianDiffusionContinuousTimes(noise_schedule=lowres_noise_schedule)
 
         # get text encoder
-
         self.text_encoder_name = text_encoder_name
         self.text_embed_dim = default(text_embed_dim, lambda: get_encoded_dim(text_encoder_name))
-
         self.encode_text = partial(t5_encode_text, name=text_encoder_name)
 
         # construct unets
-
         self.unets = nn.ModuleList([])
-        self.unet_being_trained_index = -1  # keeps track of which unet is being trained at the moment
+        # keeps track of which unet is being trained at the moment
+        self.unet_being_trained_index = -1
 
         for ind, one_unet in enumerate(unets):
             assert isinstance(one_unet, (Unet, Unet3D, NullUnet))
             is_first = ind == 0
-
             one_unet = one_unet.cast_model_parameters(lowres_cond=not is_first, cond_on_text=self.condition_on_text,
                                                       text_embed_dim=self.text_embed_dim if self.condition_on_text else None,
-                                                      channels=self.channels,
-                                                      channels_out=self.channels)
-
+                                                      channels=self.channels, channels_out=self.channels)
             self.unets.append(one_unet)
 
         # determine whether we are training on images or video
-
         is_video = any([isinstance(unet, Unet3D) for unet in self.unets])
         self.is_video = is_video
-
         self.right_pad_dims_to_datatype = partial(rearrange,
                                                   pattern=('b -> b 1 1 1' if not is_video else 'b -> b 1 1 1 1'))
         self.resize_to = resize_video_to if is_video else resize_image_to
 
         # unet image sizes
-
         self.image_sizes = cast_tuple(image_sizes)
         assert num_unets == len(
             image_sizes), f'you did not supply the correct number of u-nets ({len(self.unets)}) for resolutions {image_sizes}'
@@ -131,7 +117,6 @@ class ElucidatedImagen(nn.Module):
         self.sample_channels = cast_tuple(self.channels, num_unets)
 
         # cascading ddpm related stuff
-
         lowres_conditions = tuple(map(lambda t: t.lowres_cond, self.unets))
         assert lowres_conditions == (False, *((True,) * (
                 num_unets - 1))), 'the first unet must be unconditioned (by low resolution image), and the rest of the unets must have `lowres_cond` set to True'
@@ -140,23 +125,19 @@ class ElucidatedImagen(nn.Module):
         self.per_sample_random_aug_noise_level = per_sample_random_aug_noise_level
 
         # classifier free guidance
-
         self.cond_drop_prob = cond_drop_prob
         self.can_classifier_guidance = cond_drop_prob > 0.
 
         # normalize and unnormalize image functions
-
         self.normalize_img = normalize_neg_one_to_one if auto_normalize_img else identity
         self.unnormalize_img = unnormalize_zero_to_one if auto_normalize_img else identity
         self.input_image_range = (0. if auto_normalize_img else -1., 1.)
 
         # dynamic thresholding
-
         self.dynamic_thresholding = cast_tuple(dynamic_thresholding, num_unets)
         self.dynamic_thresholding_percentile = dynamic_thresholding_percentile
 
         # elucidating parameters
-
         hparams = [num_sample_steps, sigma_min, sigma_max, sigma_data, rho, P_mean, P_std, S_churn, S_tmin, S_tmax,
                    S_noise, ]
 
@@ -164,11 +145,9 @@ class ElucidatedImagen(nn.Module):
         self.hparams = [Hparams(*unet_hp) for unet_hp in zip(*hparams)]
 
         # one temp parameter for keeping track of device
-
         self.register_buffer('_temp', torch.tensor([0.]), persistent=False)
 
         # default to device of unets passed in
-
         self.to(next(self.unets.parameters()).device)
 
     def force_unconditional_(self):
@@ -222,7 +201,6 @@ class ElucidatedImagen(nn.Module):
             unet.to(device)
 
     # overriding state dict functions
-
     def state_dict(self, *args, **kwargs):
         self.reset_unets_all_one_device()
         return super().state_dict(*args, **kwargs)
@@ -232,7 +210,6 @@ class ElucidatedImagen(nn.Module):
         return super().load_state_dict(*args, **kwargs)
 
     # dynamic thresholding
-
     def threshold_x_start(self, x_start, dynamic_threshold=True):
         if not dynamic_threshold:
             return x_start.clamp(-1., 1.)
@@ -244,7 +221,6 @@ class ElucidatedImagen(nn.Module):
         return x_start.clamp(-s, s) / s
 
     # derived preconditioning params - Table 1
-
     def c_skip(self, sigma_data, sigma):
         return (sigma_data ** 2) / (sigma ** 2 + sigma_data ** 2)
 
@@ -259,7 +235,6 @@ class ElucidatedImagen(nn.Module):
 
     # preconditioned network output
     # equation (7) in the paper
-
     def preconditioned_network_forward(self, unet_forward, noised_images, sigma, *, sigma_data, clamp=False,
                                        dynamic_threshold=True, **kwargs):
         batch, device = noised_images.shape[0], noised_images.device
@@ -279,10 +254,8 @@ class ElucidatedImagen(nn.Module):
         return self.threshold_x_start(out, dynamic_threshold)
 
     # sampling
-
     # sample schedule
     # equation (5) in the paper
-
     def sample_schedule(self, num_sample_steps, rho, sigma_min, sigma_max):
         N = num_sample_steps
         inv_rho = 1 / rho
@@ -290,47 +263,38 @@ class ElucidatedImagen(nn.Module):
         steps = torch.arange(num_sample_steps, device=self.device, dtype=torch.float32)
         sigmas = (sigma_max ** inv_rho + steps / (N - 1) * (sigma_min ** inv_rho - sigma_max ** inv_rho)) ** rho
 
-        sigmas = F.pad(sigmas, (0, 1), value=0.)  # last step is sigma value of 0.
+        # last step is sigma value of 0.
+        sigmas = F.pad(sigmas, (0, 1), value=0.)
         return sigmas
 
     @torch.no_grad()
     def one_unet_sample(self, unet, shape, *, unet_number, clamp=True, dynamic_threshold=True, cond_scale=1.,
                         use_tqdm=True, inpaint_images=None, inpaint_masks=None, inpaint_resample_times=5,
-                        init_images=None,
-                        skip_steps=None, sigma_min=None, sigma_max=None, **kwargs):
+                        init_images=None, skip_steps=None, sigma_min=None, sigma_max=None, **kwargs):
         # get specific sampling hyperparameters for unet
-
         hp = self.hparams[unet_number - 1]
 
         sigma_min = default(sigma_min, hp.sigma_min)
         sigma_max = default(sigma_max, hp.sigma_max)
 
         # get the schedule, which is returned as (sigma, gamma) tuple, and pair up with the next sigma and gamma
-
         sigmas = self.sample_schedule(hp.num_sample_steps, hp.rho, sigma_min, sigma_max)
-
         gammas = torch.where((sigmas >= hp.S_tmin) & (sigmas <= hp.S_tmax),
                              min(hp.S_churn / hp.num_sample_steps, sqrt(2) - 1), 0.)
-
         sigmas_and_gammas = list(zip(sigmas[:-1], sigmas[1:], gammas[:-1]))
 
         # images is noise at the beginning
-
         init_sigma = sigmas[0]
-
         images = init_sigma * torch.randn(shape, device=self.device)
 
         # initializing with an image
-
         if exists(init_images):
             images += init_images
 
         # keeping track of x0, for self conditioning if needed
-
         x_start = None
 
         # prepare inpainting images and mask
-
         has_inpainting = exists(inpaint_images) and exists(inpaint_masks)
         resample_times = inpaint_resample_times if has_inpainting else 1
 
@@ -340,12 +304,10 @@ class ElucidatedImagen(nn.Module):
             inpaint_masks = self.resize_to(rearrange(inpaint_masks, 'b ... -> b 1 ...').float(), shape[-1]).bool()
 
         # unet kwargs
-
         unet_kwargs = dict(sigma_data=hp.sigma_data, clamp=clamp, dynamic_threshold=dynamic_threshold,
                            cond_scale=cond_scale, **kwargs)
 
         # gradually denoise
-
         initial_step = default(skip_steps, 0)
         sigmas_and_gammas = sigmas_and_gammas[initial_step:]
 
@@ -360,13 +322,11 @@ class ElucidatedImagen(nn.Module):
             for r in reversed(range(resample_times)):
                 is_last_resample_step = r == 0
 
-                eps = hp.S_noise * torch.randn(shape, device=self.device)  # stochastic sampling
-
+                # stochastic sampling
+                eps = hp.S_noise * torch.randn(shape, device=self.device)
                 sigma_hat = sigma + gamma * sigma
                 added_noise = sqrt(sigma_hat ** 2 - sigma ** 2) * eps
-
                 images_hat = images + added_noise
-
                 self_cond = x_start if unet.self_cond else None
 
                 if has_inpainting:
@@ -376,11 +336,9 @@ class ElucidatedImagen(nn.Module):
                                                                    self_cond=self_cond, **unet_kwargs)
 
                 denoised_over_sigma = (images_hat - model_output) / sigma_hat
-
                 images_next = images_hat + (sigma_next - sigma_hat) * denoised_over_sigma
 
                 # second order correction, if not the last timestep
-
                 if sigma_next != 0:
                     self_cond = model_output if unet.self_cond else None
 
@@ -393,7 +351,6 @@ class ElucidatedImagen(nn.Module):
                             denoised_over_sigma + denoised_prime_over_sigma)
 
                 images = images_next
-
                 if has_inpainting and not (is_last_resample_step or is_last_timestep):
                     # renoise in repaint and then resample
                     repaint_noise = torch.randn(shape, device=self.device)
@@ -414,8 +371,7 @@ class ElucidatedImagen(nn.Module):
                inpaint_masks=None, inpaint_resample_times=5, init_images=None, skip_steps=None, sigma_min=None,
                sigma_max=None, video_frames=None, batch_size=1, cond_scale=1., lowres_sample_noise_level=None,
                start_at_unet_number=1, start_image_or_video=None, stop_at_unet_number=None,
-               return_all_unet_outputs=False,
-               return_pil_images=False, use_tqdm=True, device=None, ):
+               return_all_unet_outputs=False, return_pil_images=False, use_tqdm=True, device=None, ):
         device = default(device, self.device)
         self.reset_unets_all_one_device(device=device)
 
@@ -467,24 +423,19 @@ class ElucidatedImagen(nn.Module):
         cond_scale = cast_tuple(cond_scale, num_unets)
 
         # handle video and frame dimension
-
         assert not (self.is_video and not exists(
             video_frames)), 'video_frames must be passed in on sample time if training on video'
 
         frame_dims = (video_frames,) if self.is_video else tuple()
 
         # initializing with an image or video
-
         init_images = cast_tuple(init_images, num_unets)
         init_images = [maybe(self.normalize_img)(init_image) for init_image in init_images]
-
         skip_steps = cast_tuple(skip_steps, num_unets)
-
         sigma_min = cast_tuple(sigma_min, num_unets)
         sigma_max = cast_tuple(sigma_max, num_unets)
 
         # handle starting at a unet greater than 1, for training only-upscaler training
-
         if start_at_unet_number > 1:
             assert start_at_unet_number <= num_unets, 'must start a unet that is less than the total number of unets'
             assert not exists(stop_at_unet_number) or start_at_unet_number <= stop_at_unet_number
@@ -494,7 +445,6 @@ class ElucidatedImagen(nn.Module):
             img = self.resize_to(start_image_or_video, prev_image_size)
 
         # go through each unet in cascade
-
         for unet_number, unet, channel, image_size, unet_hparam, dynamic_threshold, unet_cond_scale, unet_init_images, unet_skip_steps, unet_sigma_min, unet_sigma_max in tqdm(
                 zip(range(1, num_unets + 1), self.unets, self.sample_channels, self.image_sizes, self.hparams,
                     self.dynamic_thresholding, cond_scale, init_images, skip_steps, sigma_min, sigma_max),
@@ -526,14 +476,12 @@ class ElucidatedImagen(nn.Module):
                     unet_init_images = self.resize_to(unet_init_images, image_size)
 
                 shape = (batch_size, self.channels, *frame_dims, image_size, image_size)
-
                 img = self.one_unet_sample(unet, shape, unet_number=unet_number, text_embeds=text_embeds,
                                            text_mask=text_masks, cond_images=cond_images, inpaint_images=inpaint_images,
                                            inpaint_masks=inpaint_masks, inpaint_resample_times=inpaint_resample_times,
                                            init_images=unet_init_images, skip_steps=unet_skip_steps,
-                                           sigma_min=unet_sigma_min,
-                                           sigma_max=unet_sigma_max, cond_scale=unet_cond_scale,
-                                           lowres_cond_img=lowres_cond_img,
+                                           sigma_min=unet_sigma_min, sigma_max=unet_sigma_max,
+                                           cond_scale=unet_cond_scale, lowres_cond_img=lowres_cond_img,
                                            lowres_noise_times=lowres_noise_times, dynamic_threshold=dynamic_threshold,
                                            use_tqdm=use_tqdm)
 
@@ -635,13 +583,11 @@ class ElucidatedImagen(nn.Module):
         images = self.resize_to(images, target_image_size)
 
         # normalize to [-1, 1]
-
         images = self.normalize_img(images)
         lowres_cond_img = maybe(self.normalize_img)(lowres_cond_img)
 
         # random cropping during training
         # for upsamplers
-
         if exists(random_crop_size):
             aug = K.RandomCrop((random_crop_size, random_crop_size), p=1.)
 
@@ -652,43 +598,36 @@ class ElucidatedImagen(nn.Module):
             # detailed https://kornia.readthedocs.io/en/latest/augmentation.module.html?highlight=randomcrop#kornia.augmentation.RandomCrop
             images = aug(images)
             lowres_cond_img = aug(lowres_cond_img, params=aug._params)
-
             if is_video:
                 images, lowres_cond_img = rearrange_many((images, lowres_cond_img), '(b f) c h w -> b c f h w',
                                                          f=frames)
 
         # noise the lowres conditioning image
         # at sample time, they then fix the noise level of 0.1 - 0.3
-
         lowres_cond_img_noisy = None
         if exists(lowres_cond_img):
             lowres_cond_img_noisy, _ = self.lowres_noise_schedule.q_sample(x_start=lowres_cond_img, t=lowres_aug_times,
                                                                            noise=torch.randn_like(lowres_cond_img))
 
         # get the sigmas
-
         sigmas = self.noise_distribution(hp.P_mean, hp.P_std, batch_size)
         padded_sigmas = self.right_pad_dims_to_datatype(sigmas)
 
         # noise
-
         noise = torch.randn_like(images)
         noised_images = images + padded_sigmas * noise  # alphas are 1. in the paper
 
         # unet kwargs
-
         unet_kwargs = dict(sigma_data=hp.sigma_data, text_embeds=text_embeds, text_mask=text_masks,
                            cond_images=cond_images,
                            lowres_noise_times=self.lowres_noise_schedule.get_condition(lowres_aug_times),
                            lowres_cond_img=lowres_cond_img_noisy, cond_drop_prob=self.cond_drop_prob, )
 
         # self conditioning - https://arxiv.org/abs/2208.04202 - training will be 25% slower
-
         # Because 'unet' can be an instance of DistributedDataParallel coming from the
         # ImagenTrainer.unet_being_trained when invoking ImagenTrainer.forward(), we need to
         # access the member 'module' of the wrapped unet instance.
         self_cond = unet.module.self_cond if isinstance(unet, DistributedDataParallel) else unet
-
         if self_cond and random() < 0.5:
             with torch.no_grad():
                 pred_x0 = self.preconditioned_network_forward(unet.forward, noised_images, sigmas,
@@ -697,18 +636,14 @@ class ElucidatedImagen(nn.Module):
             unet_kwargs = {**unet_kwargs, 'self_cond': pred_x0}
 
         # get prediction
-
         denoised_images = self.preconditioned_network_forward(unet.forward, noised_images, sigmas, **unet_kwargs)
 
         # losses
-
         losses = F.mse_loss(denoised_images, images, reduction='none')
         losses = reduce(losses, 'b ... -> b', 'mean')
 
         # loss weighting
-
         losses = losses * self.loss_weight(hp.sigma_data, sigmas)
 
         # return average loss
-
         return losses.mean()

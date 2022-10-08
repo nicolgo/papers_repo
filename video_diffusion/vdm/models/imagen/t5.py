@@ -66,7 +66,6 @@ def get_encoded_dim(name):
 
 
 # encoding text
-
 def t5_tokenize(texts: List[str], name=DEFAULT_T5_NAME):
     t5, tokenizer = get_model_and_tokenizer(name)
 
@@ -104,7 +103,8 @@ def t5_encode_tokenized_text(token_ids, attn_mask=None, pad_id=None, name=DEFAUL
 
 def t5_encode_text(texts: List[str], name=DEFAULT_T5_NAME, return_attn_mask=False):
     token_ids, attn_mask = t5_tokenize(texts, name=name)
-    encoded_text = t5_encode_tokenized_text(token_ids, attn_mask=attn_mask, name=name)
+    encoded_text = t5_encode_tokenized_text(
+        token_ids, attn_mask=attn_mask, name=name)
 
     if return_attn_mask:
         attn_mask = attn_mask.bool()
