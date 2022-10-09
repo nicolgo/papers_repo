@@ -1016,11 +1016,10 @@ class ImagenTrainer(nn.Module):
         self.validate_and_set_unet_being_trained(unet_number)
         self.set_accelerator_scaler(unet_number)
 
-        assert not exists(
-            self.only_train_unet_number) or self.only_train_unet_number == unet_number, f'you can only train unet #{self.only_train_unet_number}'
+        assert not exists(self.only_train_unet_number) or self.only_train_unet_number == unet_number, \
+            f'you can only train unet #{self.only_train_unet_number}'
 
         total_loss = 0.
-
         for chunk_size_frac, (chunked_args, chunked_kwargs) in split_args_and_kwargs(*args, split_size=max_batch_size,
                                                                                      **kwargs):
             with self.accelerator.autocast():

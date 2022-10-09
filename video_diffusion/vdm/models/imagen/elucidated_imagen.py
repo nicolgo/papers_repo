@@ -518,21 +518,19 @@ class ElucidatedImagen(nn.Module):
                 texts: List[str] = None, text_embeds=None, text_masks=None, unet_number=None, cond_images=None):
         assert images.shape[-1] == images.shape[
             -2], f'the images you pass in must be a square, but received dimensions of {images.shape[2]}, {images.shape[-1]}'
-        assert not (len(self.unets) > 1 and not exists(
-            unet_number)), f'you must specify which unet you want trained, from a range of 1 to {len(self.unets)}, if you are training cascading DDPM (multiple unets)'
+        assert not (len(self.unets) > 1 and not exists(unet_number)), \
+            f'you must specify which unet you want trained, from a range of 1 to {len(self.unets)}, ' \
+            f'if you are training cascading DDPM (multiple unets)'
         unet_number = default(unet_number, 1)
-        assert not exists(
-            self.only_train_unet_number) or self.only_train_unet_number == unet_number, 'you can only train on unet #{self.only_train_unet_number}'
+        assert not exists(self.only_train_unet_number) or self.only_train_unet_number == unet_number, \
+            'you can only train on unet #{self.only_train_unet_number}'
 
         images = cast_uint8_images_to_float(images)
         cond_images = maybe(cast_uint8_images_to_float)(cond_images)
-
         assert is_float_dtype(images.dtype), f'images tensor needs to be floats but {images.dtype} dtype found instead'
 
         unet_index = unet_number - 1
-
         unet = default(unet, lambda: self.get_unet(unet_number))
-
         assert not isinstance(unet, NullUnet), 'null unet cannot and should not be trained'
 
         target_image_size = self.image_sizes[unet_index]
@@ -541,21 +539,18 @@ class ElucidatedImagen(nn.Module):
         hp = self.hparams[unet_index]
 
         batch_size, c, *_, h, w, device, is_video = *images.shape, images.device, (images.ndim == 5)
-
         frames = images.shape[2] if is_video else None
-
         check_shape(images, 'b c ...', c=self.channels)
 
         assert h >= target_image_size and w >= target_image_size
 
         if exists(texts) and not exists(text_embeds) and not self.unconditional:
             assert all([*map(len, texts)]), 'text cannot be empty'
-            assert len(texts) == len(
-                images), 'number of text captions does not match up with the number of images given'
+            assert len(texts) == len(images), \
+                'number of text captions does not match up with the number of images given'
 
             with autocast(enabled=False):
                 text_embeds, text_masks = self.encode_text(texts, return_attn_mask=True)
-
             text_embeds, text_masks = map(lambda t: t.to(images.device), (text_embeds, text_masks))
 
         if not self.unconditional:
@@ -565,7 +560,6 @@ class ElucidatedImagen(nn.Module):
             text_embeds)), 'text or text encodings must be passed into decoder if specified'
         assert not (not self.condition_on_text and exists(
             text_embeds)), 'decoder specified not to be conditioned on text, yet it is presented'
-
         assert not (exists(text_embeds) and text_embeds.shape[
             -1] != self.text_embed_dim), f'invalid text embedding dimension being passed in (should be {self.text_embed_dim})'
 
@@ -573,7 +567,6 @@ class ElucidatedImagen(nn.Module):
         if exists(prev_image_size):
             lowres_cond_img = self.resize_to(images, prev_image_size, clamp_range=self.input_image_range)
             lowres_cond_img = self.resize_to(lowres_cond_img, target_image_size, clamp_range=self.input_image_range)
-
             if self.per_sample_random_aug_noise_level:
                 lowres_aug_times = self.lowres_noise_schedule.sample_random_times(batch_size, device=device)
             else:
@@ -608,7 +601,6 @@ class ElucidatedImagen(nn.Module):
         if exists(lowres_cond_img):
             lowres_cond_img_noisy, _ = self.lowres_noise_schedule.q_sample(x_start=lowres_cond_img, t=lowres_aug_times,
                                                                            noise=torch.randn_like(lowres_cond_img))
-
         # get the sigmas
         sigmas = self.noise_distribution(hp.P_mean, hp.P_std, batch_size)
         padded_sigmas = self.right_pad_dims_to_datatype(sigmas)
@@ -632,7 +624,6 @@ class ElucidatedImagen(nn.Module):
             with torch.no_grad():
                 pred_x0 = self.preconditioned_network_forward(unet.forward, noised_images, sigmas,
                                                               **unet_kwargs).detach()
-
             unet_kwargs = {**unet_kwargs, 'self_cond': pred_x0}
 
         # get prediction

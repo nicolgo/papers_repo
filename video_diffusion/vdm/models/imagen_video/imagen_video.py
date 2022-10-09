@@ -1206,7 +1206,6 @@ class Unet3D(nn.Module):
             lowres_cond_img)), 'low resolution conditioning image must be present'
         assert not (self.lowres_cond and not exists(
             lowres_noise_times)), 'low resolution conditioning noise time must be present'
-
         if exists(lowres_cond_img):
             x = torch.cat((x, lowres_cond_img), dim=1)
 
@@ -1234,8 +1233,6 @@ class Unet3D(nn.Module):
 
         # time conditioning
         time_hiddens = self.to_time_hiddens(time)
-
-        # derive time tokens
         time_tokens = self.to_time_tokens(time_hiddens)
         t = self.to_time_cond(time_hiddens)
 
@@ -1245,7 +1242,6 @@ class Unet3D(nn.Module):
             lowres_time_hiddens = self.to_lowres_time_hiddens(lowres_noise_times)
             lowres_time_tokens = self.to_lowres_time_tokens(lowres_time_hiddens)
             lowres_t = self.to_lowres_time_cond(lowres_time_hiddens)
-
             t = t + lowres_t
             time_tokens = torch.cat((time_tokens, lowres_time_tokens), dim=-2)
 
@@ -1260,26 +1256,20 @@ class Unet3D(nn.Module):
             # calculate text embeds
             text_tokens = self.text_to_cond(text_embeds)
             text_tokens = text_tokens[:, :self.max_text_len]
-
-            if exists(text_mask):
-                text_mask = text_mask[:, :self.max_text_len]
-
             text_tokens_len = text_tokens.shape[1]
             remainder = self.max_text_len - text_tokens_len
-
             if remainder > 0:
                 text_tokens = F.pad(text_tokens, (0, 0, 0, remainder))
 
             if exists(text_mask):
+                text_mask = text_mask[:, :self.max_text_len]
                 if remainder > 0:
                     text_mask = F.pad(text_mask, (0, remainder), value=False)
-
                 text_mask = rearrange(text_mask, 'b n -> b n 1')
                 text_keep_mask_embed = text_mask & text_keep_mask_embed
 
             null_text_embed = self.null_text_embed.to(text_tokens.dtype)  # for some reason pytorch AMP not working
             text_tokens = torch.where(text_keep_mask_embed, text_tokens, null_text_embed)
-
             if exists(self.attn_pool):
                 text_tokens = self.attn_pool(text_tokens)
 
@@ -1323,14 +1313,12 @@ class Unet3D(nn.Module):
         x = self.mid_block1(x, t, c)
         if exists(self.mid_attn):
             x = self.mid_attn(x)
-
         x = self.mid_temporal_peg(x)
         x = self.mid_temporal_attn(x, attn_bias=time_attn_bias)
         x = self.mid_block2(x, t, c)
 
         add_skip_connection = lambda x: torch.cat((x, hiddens.pop() * self.skip_connect_scale), dim=1)
         up_hiddens = []
-
         for init_block, resnet_blocks, attn_block, temporal_peg, temporal_attn, upsample in self.ups:
             x = add_skip_connection(x)
             x = init_block(x, t, c)
