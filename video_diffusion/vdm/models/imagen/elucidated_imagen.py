@@ -112,7 +112,7 @@ class ElucidatedImagen(nn.Module):
         # unet image sizes
         self.image_sizes = cast_tuple(image_sizes)
         assert num_unets == len(
-            image_sizes), f'you did not supply the correct number of u-nets ({len(self.unets)}) for resolutions {image_sizes}'
+            self.image_sizes), f'you did not supply the correct number of u-nets ({len(self.unets)}) for resolutions {image_sizes}'
 
         self.sample_channels = cast_tuple(self.channels, num_unets)
 
@@ -386,8 +386,8 @@ class ElucidatedImagen(nn.Module):
             text_embeds, text_masks = map(lambda t: t.to(device), (text_embeds, text_masks))
 
         if not self.unconditional:
-            assert exists(
-                text_embeds), 'text must be passed in if the network was not trained without text `condition_on_text` must be set to `False` when training'
+            assert exists(text_embeds), 'text must be passed in if the network was not trained without text ' \
+                                        '`condition_on_text` must be set to `False` when training'
 
             text_masks = default(text_masks, lambda: torch.any(text_embeds != 0., dim=-1))
             batch_size = text_embeds.shape[0]
@@ -397,34 +397,31 @@ class ElucidatedImagen(nn.Module):
                 if batch_size == 1:  # assume researcher wants to broadcast along inpainted images
                     batch_size = inpaint_images.shape[0]
 
-            assert inpaint_images.shape[
-                       0] == batch_size, 'number of inpainting images must be equal to the specified batch size on sample `sample(batch_size=<int>)``'
-            assert not (self.condition_on_text and inpaint_images.shape[0] != text_embeds.shape[
-                0]), 'number of inpainting images must be equal to the number of text to be conditioned on'
+            assert inpaint_images.shape[0] == batch_size, 'number of inpainting images must be equal to the ' \
+                                                          'specified batch size on sample `sample(batch_size=<int>)``'
+            assert not (self.condition_on_text and inpaint_images.shape[0] != text_embeds.shape[0]), \
+                'number of inpainting images must be equal to the number of text to be conditioned on'
 
-        assert not (self.condition_on_text and not exists(
-            text_embeds)), 'text or text encodings must be passed into imagen if specified'
-        assert not (not self.condition_on_text and exists(
-            text_embeds)), 'imagen specified not to be conditioned on text, yet it is presented'
-        assert not (exists(text_embeds) and text_embeds.shape[
-            -1] != self.text_embed_dim), f'invalid text embedding dimension being passed in (should be {self.text_embed_dim})'
-
-        assert not (exists(inpaint_images) ^ exists(
-            inpaint_masks)), 'inpaint images and masks must be both passed in to do inpainting'
+        assert not (self.condition_on_text and not exists(text_embeds)), \
+            'text or text encodings must be passed into imagen if specified'
+        assert not (not self.condition_on_text and exists(text_embeds)), \
+            'imagen specified not to be conditioned on text, yet it is presented'
+        assert not (exists(text_embeds) and text_embeds.shape[-1] != self.text_embed_dim), \
+            f'invalid text embedding dimension being passed in (should be {self.text_embed_dim})'
+        assert not (exists(inpaint_images) ^ exists(inpaint_masks)), \
+            'inpaint images and masks must be both passed in to do inpainting'
 
         outputs = []
 
         is_cuda = next(self.parameters()).is_cuda
         device = next(self.parameters()).device
-
         lowres_sample_noise_level = default(lowres_sample_noise_level, self.lowres_sample_noise_level)
-
         num_unets = len(self.unets)
         cond_scale = cast_tuple(cond_scale, num_unets)
 
         # handle video and frame dimension
-        assert not (self.is_video and not exists(
-            video_frames)), 'video_frames must be passed in on sample time if training on video'
+        assert not (self.is_video and not exists(video_frames)), \
+            'video_frames must be passed in on sample time if training on video'
 
         frame_dims = (video_frames,) if self.is_video else tuple()
 
@@ -440,7 +437,6 @@ class ElucidatedImagen(nn.Module):
             assert start_at_unet_number <= num_unets, 'must start a unet that is less than the total number of unets'
             assert not exists(stop_at_unet_number) or start_at_unet_number <= stop_at_unet_number
             assert exists(start_image_or_video), 'starting image or video must be supplied if only doing upscaling'
-
             prev_image_size = self.image_sizes[start_at_unet_number - 2]
             img = self.resize_to(start_image_or_video, prev_image_size)
 
@@ -556,12 +552,12 @@ class ElucidatedImagen(nn.Module):
         if not self.unconditional:
             text_masks = default(text_masks, lambda: torch.any(text_embeds != 0., dim=-1))
 
-        assert not (self.condition_on_text and not exists(
-            text_embeds)), 'text or text encodings must be passed into decoder if specified'
-        assert not (not self.condition_on_text and exists(
-            text_embeds)), 'decoder specified not to be conditioned on text, yet it is presented'
-        assert not (exists(text_embeds) and text_embeds.shape[
-            -1] != self.text_embed_dim), f'invalid text embedding dimension being passed in (should be {self.text_embed_dim})'
+        assert not (self.condition_on_text and not exists(text_embeds)), \
+            'text or text encodings must be passed into decoder if specified'
+        assert not (not self.condition_on_text and exists(text_embeds)), \
+            'decoder specified not to be conditioned on text, yet it is presented'
+        assert not (exists(text_embeds) and text_embeds.shape[-1] != self.text_embed_dim), \
+            f'invalid text embedding dimension being passed in (should be {self.text_embed_dim})'
 
         lowres_cond_img = lowres_aug_times = None
         if exists(prev_image_size):
@@ -579,8 +575,7 @@ class ElucidatedImagen(nn.Module):
         images = self.normalize_img(images)
         lowres_cond_img = maybe(self.normalize_img)(lowres_cond_img)
 
-        # random cropping during training
-        # for upsamplers
+        # random cropping during training for upsamplers
         if exists(random_crop_size):
             aug = K.RandomCrop((random_crop_size, random_crop_size), p=1.)
 
@@ -595,8 +590,7 @@ class ElucidatedImagen(nn.Module):
                 images, lowres_cond_img = rearrange_many((images, lowres_cond_img), '(b f) c h w -> b c f h w',
                                                          f=frames)
 
-        # noise the lowres conditioning image
-        # at sample time, they then fix the noise level of 0.1 - 0.3
+        # noise the lowres conditioning image at sample time, they then fix the noise level of 0.1 - 0.3
         lowres_cond_img_noisy = None
         if exists(lowres_cond_img):
             lowres_cond_img_noisy, _ = self.lowres_noise_schedule.q_sample(x_start=lowres_cond_img, t=lowres_aug_times,
