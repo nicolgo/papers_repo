@@ -18,11 +18,8 @@ def default(val, d):
 
 
 # config
-
 MAX_LENGTH = 256
-
 DEFAULT_T5_NAME = 'google/t5-v1_1-base'
-
 T5_CONFIGS = {}
 
 
@@ -103,8 +100,7 @@ def t5_encode_tokenized_text(token_ids, attn_mask=None, pad_id=None, name=DEFAUL
 
 def t5_encode_text(texts: List[str], name=DEFAULT_T5_NAME, return_attn_mask=False):
     token_ids, attn_mask = t5_tokenize(texts, name=name)
-    encoded_text = t5_encode_tokenized_text(
-        token_ids, attn_mask=attn_mask, name=name)
+    encoded_text = t5_encode_tokenized_text(token_ids, attn_mask=attn_mask, name=name)
 
     if return_attn_mask:
         attn_mask = attn_mask.bool()
