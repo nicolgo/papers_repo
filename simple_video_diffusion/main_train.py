@@ -29,7 +29,7 @@ if __name__ == "__main__":
     videos = torch.randn(4, 3, 10, 32, 32).cuda()  # (batch, channels, time / video frames, height, width)
 
     # feed images into imagen, training each unet in the cascade, for this example, only training unet 1
-    trainer = ImagenTrainer(imagen)
+    trainer = ImagenTrainer(imagen, checkpoint_path="./logs", checkpoint_every=200)
     trainer(videos, texts=texts, unet_number=1)
     trainer.update(unet_number=1)
 

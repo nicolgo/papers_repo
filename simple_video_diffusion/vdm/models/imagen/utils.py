@@ -1,6 +1,7 @@
 import torch
 from functools import wraps
 import torch.nn.functional as F
+import torch.nn as nn
 
 
 def exists(val):
@@ -72,3 +73,5 @@ def unnormalize_zero_to_one(normed_img):
 
 def identity(t, *args, **kwargs):
     return t
+
+

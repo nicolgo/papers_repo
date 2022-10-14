@@ -11,7 +11,10 @@ from einops_exts import rearrange_many, repeat_many, check_shape
 from torch.cuda.amp import autocast
 import kornia.augmentation as K
 from random import random
-
+from tqdm.auto import tqdm
+from math import sqrt
+import torchvision.transforms as T
+from contextlib import contextmanager, nullcontext
 from vdm.models.imagen.variational_diffusion import GaussianDiffusionContinuousTimes
 
 Hparams_fields = ['num_sample_steps', 'sigma_min', 'sigma_max', 'sigma_data', 'rho', 'P_mean', 'P_std', 'S_churn',
@@ -21,6 +24,10 @@ Hparams = namedtuple('Hparams', Hparams_fields)
 
 def log(t, eps=1e-20):
     return torch.log(t.clamp(min=eps))
+
+
+def module_device(module):
+    return next(module.parameters()).device
 
 
 class ElucidatedImagen(nn.Module):
@@ -113,8 +120,8 @@ class ElucidatedImagen(nn.Module):
         self.dynamic_thresholding_percentile = dynamic_thresholding_percentile
 
         # elucidating parameters
-        hparams = [num_sample_steps, sigma_min, sigma_max, sigma_data, rho,
-                   P_mean, P_std, S_churn, S_tmin, S_tmax, S_noise, ]
+        hparams = [num_sample_steps, sigma_min, sigma_max, sigma_data, rho, P_mean, P_std, S_churn, S_tmin, S_tmax,
+                   S_noise, ]
         hparams = [cast_tuple(hp, num_unets) for hp in hparams]
         self.hparams = [Hparams(*unet_hp) for unet_hp in zip(*hparams)]
 
@@ -135,6 +142,16 @@ class ElucidatedImagen(nn.Module):
 
     def c_noise(self, sigma):
         return log(sigma) * 0.25
+
+    def threshold_x_start(self, x_start, dynamic_threshold=True):
+        if not dynamic_threshold:
+            return x_start.clamp(-1., 1.)
+
+        s = torch.quantile(rearrange(x_start, 'b ... -> b (...)').abs(), self.dynamic_thresholding_percentile, dim=-1)
+
+        s.clamp_(min=1.)
+        s = right_pad_dims_to(x_start, s)
+        return x_start.clamp(-s, s) / s
 
     # preconditioned network output equation (7) in the paper
     def preconditioned_network_forward(self, unet_forward, noised_images, sigma, *, sigma_data, clamp=False,
@@ -259,3 +276,240 @@ class ElucidatedImagen(nn.Module):
         losses = losses * self.loss_weight(hp.sigma_data, sigmas)
         # return average loss
         return losses.mean()
+
+    def reset_unets_all_one_device(self, device=None):
+        device = default(device, self.device)
+        self.unets = nn.ModuleList([*self.unets])
+        self.unets.to(device)
+
+        self.unet_being_trained_index = -1
+
+    # sample schedule equation (5) in the paper
+    def sample_schedule(self, num_sample_steps, rho, sigma_min, sigma_max):
+        N = num_sample_steps
+        inv_rho = 1 / rho
+
+        steps = torch.arange(num_sample_steps, device=self.device, dtype=torch.float32)
+        sigmas = (sigma_max ** inv_rho + steps / (N - 1) * (sigma_min ** inv_rho - sigma_max ** inv_rho)) ** rho
+
+        # last step is sigma value of 0.
+        sigmas = F.pad(sigmas, (0, 1), value=0.)
+        return sigmas
+
+    @contextmanager
+    def one_unet_in_gpu(self, unet_number=None, unet=None):
+        assert exists(unet_number) ^ exists(unet)
+
+        if exists(unet_number):
+            unet = self.unets[unet_number - 1]
+
+        devices = [module_device(unet) for unet in self.unets]
+        self.unets.cpu()
+        unet.to(self.device)
+
+        yield
+
+        for unet, device in zip(self.unets, devices):
+            unet.to(device)
+
+    @torch.no_grad()
+    def one_unet_sample(self, unet, shape, *, unet_number, clamp=True, dynamic_threshold=True, cond_scale=1.,
+                        use_tqdm=True, inpaint_images=None, inpaint_masks=None, inpaint_resample_times=5,
+                        init_images=None, skip_steps=None, sigma_min=None, sigma_max=None, **kwargs):
+        # get specific sampling hyperparameters for unet
+        hp = self.hparams[unet_number - 1]
+
+        sigma_min = default(sigma_min, hp.sigma_min)
+        sigma_max = default(sigma_max, hp.sigma_max)
+
+        # get the schedule, which is returned as (sigma, gamma) tuple, and pair up with the next sigma and gamma
+        sigmas = self.sample_schedule(hp.num_sample_steps, hp.rho, sigma_min, sigma_max)
+        gammas = torch.where((sigmas >= hp.S_tmin) & (sigmas <= hp.S_tmax),
+                             min(hp.S_churn / hp.num_sample_steps, sqrt(2) - 1), 0.)
+        sigmas_and_gammas = list(zip(sigmas[:-1], sigmas[1:], gammas[:-1]))
+
+        # images is noise at the beginning
+        init_sigma = sigmas[0]
+        images = init_sigma * torch.randn(shape, device=self.device)
+
+        # initializing with an image
+        if exists(init_images):
+            images += init_images
+
+        # keeping track of x0, for self conditioning if needed
+        x_start = None
+
+        # prepare inpainting images and mask
+        has_inpainting = exists(inpaint_images) and exists(inpaint_masks)
+        resample_times = inpaint_resample_times if has_inpainting else 1
+
+        if has_inpainting:
+            inpaint_images = self.normalize_img(inpaint_images)
+            inpaint_images = self.resize_to(inpaint_images, shape[-1])
+            inpaint_masks = self.resize_to(rearrange(inpaint_masks, 'b ... -> b 1 ...').float(), shape[-1]).bool()
+
+        # unet kwargs
+        unet_kwargs = dict(sigma_data=hp.sigma_data, clamp=clamp, dynamic_threshold=dynamic_threshold,
+                           cond_scale=cond_scale, **kwargs)
+
+        # gradually denoise
+        initial_step = default(skip_steps, 0)
+        sigmas_and_gammas = sigmas_and_gammas[initial_step:]
+
+        total_steps = len(sigmas_and_gammas)
+
+        for ind, (sigma, sigma_next, gamma) in tqdm(enumerate(sigmas_and_gammas), total=total_steps,
+                                                    desc='sampling time step', disable=not use_tqdm):
+            is_last_timestep = ind == (total_steps - 1)
+
+            sigma, sigma_next, gamma = map(lambda t: t.item(), (sigma, sigma_next, gamma))
+
+            for r in reversed(range(resample_times)):
+                is_last_resample_step = r == 0
+
+                # stochastic sampling
+                eps = hp.S_noise * torch.randn(shape, device=self.device)
+                sigma_hat = sigma + gamma * sigma
+                added_noise = sqrt(sigma_hat ** 2 - sigma ** 2) * eps
+                images_hat = images + added_noise
+                self_cond = x_start if unet.self_cond else None
+
+                if has_inpainting:
+                    images_hat = images_hat * ~inpaint_masks + (inpaint_images + added_noise) * inpaint_masks
+
+                model_output = self.preconditioned_network_forward(unet.forward_with_cond_scale, images_hat, sigma_hat,
+                                                                   self_cond=self_cond, **unet_kwargs)
+
+                denoised_over_sigma = (images_hat - model_output) / sigma_hat
+                images_next = images_hat + (sigma_next - sigma_hat) * denoised_over_sigma
+
+                # second order correction, if not the last timestep
+                if sigma_next != 0:
+                    self_cond = model_output if unet.self_cond else None
+
+                    model_output_next = self.preconditioned_network_forward(unet.forward_with_cond_scale, images_next,
+                                                                            sigma_next, self_cond=self_cond,
+                                                                            **unet_kwargs)
+
+                    denoised_prime_over_sigma = (images_next - model_output_next) / sigma_next
+                    images_next = images_hat + 0.5 * (sigma_next - sigma_hat) * (
+                            denoised_over_sigma + denoised_prime_over_sigma)
+
+                images = images_next
+                if has_inpainting and not (is_last_resample_step or is_last_timestep):
+                    # renoise in repaint and then resample
+                    repaint_noise = torch.randn(shape, device=self.device)
+                    images = images + (sigma - sigma_next) * repaint_noise
+
+                x_start = model_output  # save model output for self conditioning
+
+        images = images.clamp(-1., 1.)
+
+        if has_inpainting:
+            images = images * ~inpaint_masks + inpaint_images * inpaint_masks
+
+        return self.unnormalize_img(images)
+
+    def sample(self, texts=None, text_masks=None, text_embeds=None, cond_images=None, inpaint_images=None,
+               inpaint_masks=None, inpaint_resample_times=5, init_images=None, skip_steps=None, sigma_min=None,
+               sigma_max=None, video_frames=None, batch_size=1, cond_scale=1., lowres_sample_noise_level=None,
+               start_at_unet_number=1, start_image_or_video=None, stop_at_unet_number=None,
+               return_all_unet_outputs=False, return_pil_images=False, use_tqdm=True, device=None, ):
+        device = default(device, self.device)
+        self.reset_unets_all_one_device(device=device)
+
+        cond_images = maybe(cast_uint8_images_to_float)(cond_images)
+        if exists(texts) and not exists(text_embeds) and not self.unconditional:
+            with autocast(enabled=False):
+                text_embeds, text_masks = self.encode_text(texts, return_attn_mask=True)
+            text_embeds, text_masks = map(lambda t: t.to(device), (text_embeds, text_masks))
+        if not self.unconditional:
+            text_masks = default(text_masks, lambda: torch.any(text_embeds != 0., dim=-1))
+            batch_size = text_embeds.shape[0]
+
+        if exists(inpaint_images):
+            if self.unconditional:
+                if batch_size == 1:  # assume researcher wants to broadcast along inpainted images
+                    batch_size = inpaint_images.shape[0]
+
+        outputs = []
+        is_cuda = next(self.parameters()).is_cuda
+        device = next(self.parameters()).device
+        lowres_sample_noise_level = default(lowres_sample_noise_level, self.lowres_sample_noise_level)
+        num_unets = len(self.unets)
+        cond_scale = cast_tuple(cond_scale, num_unets)
+
+        # initializing with an image or video
+        frame_dims = (video_frames,) if self.is_video else tuple()
+        init_images = cast_tuple(init_images, num_unets)
+        init_images = [maybe(self.normalize_img)(init_image) for init_image in init_images]
+        skip_steps = cast_tuple(skip_steps, num_unets)
+        sigma_min = cast_tuple(sigma_min, num_unets)
+        sigma_max = cast_tuple(sigma_max, num_unets)
+
+        # handle starting at an unet greater than 1, for training only-upscaler training
+        if start_at_unet_number > 1:
+            prev_image_size = self.image_sizes[start_at_unet_number - 2]
+            img = self.resize_to(start_image_or_video, prev_image_size)
+
+        # go through each unet in cascade
+        for unet_number, unet, channel, image_size, unet_hparam, dynamic_threshold, unet_cond_scale, unet_init_images, unet_skip_steps, unet_sigma_min, unet_sigma_max in tqdm(
+                zip(range(1, num_unets + 1), self.unets, self.sample_channels, self.image_sizes, self.hparams,
+                    self.dynamic_thresholding, cond_scale, init_images, skip_steps, sigma_min, sigma_max),
+                disable=not use_tqdm):
+            if unet_number < start_at_unet_number:
+                continue
+
+            context = self.one_unet_in_gpu(unet=unet) if is_cuda else nullcontext()
+            with context:
+                lowres_cond_img = lowres_noise_times = None
+                shape = (batch_size, channel, *frame_dims, image_size, image_size)
+                if unet.lowres_cond:
+                    lowres_noise_times = self.lowres_noise_schedule.get_times(batch_size, lowres_sample_noise_level,
+                                                                              device=device)
+                    lowres_cond_img = self.resize_to(img, image_size)
+                    lowres_cond_img = self.normalize_img(lowres_cond_img)
+                    lowres_cond_img, _ = self.lowres_noise_schedule.q_sample(x_start=lowres_cond_img,
+                                                                             t=lowres_noise_times,
+                                                                             noise=torch.randn_like(
+                                                                                 lowres_cond_img))
+                if exists(unet_init_images):
+                    unet_init_images = self.resize_to(unet_init_images, image_size)
+
+                shape = (batch_size, self.channels, *frame_dims, image_size, image_size)
+                img = self.one_unet_sample(unet, shape, unet_number=unet_number, text_embeds=text_embeds,
+                                           text_mask=text_masks, cond_images=cond_images,
+                                           inpaint_images=inpaint_images, inpaint_masks=inpaint_masks,
+                                           inpaint_resample_times=inpaint_resample_times,
+                                           init_images=unet_init_images, skip_steps=unet_skip_steps,
+                                           sigma_min=unet_sigma_min, sigma_max=unet_sigma_max,
+                                           cond_scale=unet_cond_scale, lowres_cond_img=lowres_cond_img,
+                                           lowres_noise_times=lowres_noise_times,
+                                           dynamic_threshold=dynamic_threshold, use_tqdm=use_tqdm)
+                outputs.append(img)
+            if exists(stop_at_unet_number) and stop_at_unet_number == unet_number:
+                break
+
+        output_index = -1 if not return_all_unet_outputs else slice(None)
+
+        if not return_pil_images:
+            return outputs[output_index]
+        if not return_all_unet_outputs:
+            outputs = outputs[-1:]
+
+        assert not self.is_video, 'automatically converting video tensor to video file for saving is not built yet'
+        pil_images = list(map(lambda img: list(map(T.ToPILImage(), img.unbind(dim=0))), outputs))
+        return pil_images[output_index]
+
+
+class NullUnet(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.lowres_cond = False
+        self.dummy_parameter = nn.Parameter(torch.tensor([0.]))
+
+    def cast_model_parameters(self, *args, **kwargs):
+        return self
+
+    def forward(self, x, *args, **kwargs):
+        return x
