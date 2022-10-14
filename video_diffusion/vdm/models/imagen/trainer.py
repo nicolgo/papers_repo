@@ -253,102 +253,74 @@ class ImagenTrainer(nn.Module):
             imagen_checkpoint_path), 'either imagen instance is passed into the trainer, or a checkpoint path that contains the imagen config'
 
         # determine filesystem, using fsspec, for saving to local filesystem or cloud
-
         self.fs = checkpoint_fs
-
         if not exists(self.fs):
             fs_kwargs = default(fs_kwargs, {})
             self.fs, _ = url_to_fs(default(checkpoint_path, './'), **fs_kwargs)
 
         assert isinstance(imagen, (Imagen, ElucidatedImagen))
+
         ema_kwargs, kwargs = groupby_prefix_and_trim('ema_', kwargs)
-
         # elucidated or not
-
         self.is_elucidated = isinstance(imagen, ElucidatedImagen)
 
         # create accelerator instance
-
         accelerate_kwargs, kwargs = groupby_prefix_and_trim('accelerate_', kwargs)
-
         assert not (fp16 and exists(
             precision)), 'either set fp16 = True or forward the precision ("fp16", "bf16") to Accelerator'
         accelerator_mixed_precision = default(precision, 'fp16' if fp16 else 'no')
-
-        self.accelerator = Accelerator(
-            **{'split_batches': split_batches, 'mixed_precision': accelerator_mixed_precision,
-                'kwargs_handlers': [DistributedDataParallelKwargs(find_unused_parameters=True)], **accelerate_kwargs})
+        self.accelerator = Accelerator(**{
+            'split_batches': split_batches,
+            'mixed_precision': accelerator_mixed_precision,
+            'kwargs_handlers': [DistributedDataParallelKwargs(find_unused_parameters=True)], **accelerate_kwargs})
 
         ImagenTrainer.locked = self.is_distributed
-
         # cast data to fp16 at training time if needed
-
         self.cast_half_at_training = accelerator_mixed_precision == 'fp16'
-
         # grad scaler must be managed outside of accelerator
-
         grad_scaler_enabled = fp16
 
         # imagen, unets and ema unets
-
         self.imagen = imagen
         self.num_unets = len(self.imagen.unets)
-
         self.use_ema = use_ema and self.is_main
         self.ema_unets = nn.ModuleList([])
 
         # keep track of what unet is being trained on
         # only going to allow 1 unet training at a time
-
         # keeps track of which ema unet is being trained on
         self.ema_unet_being_trained_index = -1
 
         # data related functions
-
         self.train_dl_iter = None
         self.train_dl = None
-
         self.valid_dl_iter = None
         self.valid_dl = None
-
         self.dl_tuple_output_keywords_names = dl_tuple_output_keywords_names
 
         # auto splitting validation from training, if dataset is passed in
-
         self.split_valid_from_train = split_valid_from_train
-
         assert 0 <= split_valid_fraction <= 1, 'split valid fraction must be between 0 and 1'
         self.split_valid_fraction = split_valid_fraction
         self.split_random_seed = split_random_seed
 
-        # be able to finely customize learning rate, weight decay
-        # per unet
-
+        # be able to finely customize learning rate, weight decay per unet
         lr, eps, warmup_steps, cosine_decay_max_steps = map(partial(cast_tuple, length=self.num_unets),
                                                             (lr, eps, warmup_steps, cosine_decay_max_steps))
-
         for ind, (unet, unet_lr, unet_eps, unet_warmup_steps, unet_cosine_decay_max_steps) in enumerate(
                 zip(self.imagen.unets, lr, eps, warmup_steps, cosine_decay_max_steps)):
             optimizer = Adam(unet.parameters(), lr=unet_lr, eps=unet_eps, betas=(beta1, beta2), **kwargs)
-
             if self.use_ema:
                 self.ema_unets.append(EMA(unet, **ema_kwargs))
-
             scaler = GradScaler(enabled=grad_scaler_enabled)
-
             scheduler = warmup_scheduler = None
-
             if exists(unet_cosine_decay_max_steps):
                 scheduler = CosineAnnealingLR(optimizer, T_max=unet_cosine_decay_max_steps)
-
             if exists(unet_warmup_steps):
                 warmup_scheduler = warmup.LinearWarmup(optimizer, warmup_period=unet_warmup_steps)
-
                 if not exists(scheduler):
                     scheduler = LambdaLR(optimizer, lr_lambda=lambda step: 1.0)
-
             # set on object
-
             # cannot use pytorch ModuleList for some reason with optimizers
             setattr(self, f'optim{ind}', optimizer)
             setattr(self, f'scaler{ind}', scaler)
@@ -356,44 +328,34 @@ class ImagenTrainer(nn.Module):
             setattr(self, f'warmup{ind}', warmup_scheduler)
 
         # gradient clipping if needed
-
         self.max_grad_norm = max_grad_norm
 
         # step tracker and misc
-
         self.register_buffer('steps', torch.tensor([0] * self.num_unets))
-
         self.verbose = verbose
 
         # automatic set devices based on what accelerator decided
-
         self.imagen.to(self.device)
         self.to(self.device)
 
         # checkpointing
-
         assert not (exists(checkpoint_path) ^ exists(checkpoint_every))
         self.checkpoint_path = checkpoint_path
         self.checkpoint_every = checkpoint_every
         self.max_checkpoints_keep = max_checkpoints_keep
 
         self.can_checkpoint = self.is_local_main if isinstance(checkpoint_fs, LocalFileSystem) else self.is_main
-
         if exists(checkpoint_path) and self.can_checkpoint:
             bucket = url_to_bucket(checkpoint_path)
-
             if not self.fs.exists(bucket):
                 self.fs.mkdir(bucket)
-
             self.load_from_checkpoint_folder()
 
         # only allowing training for unet
-
         self.only_train_unet_number = only_train_unet_number
         self.validate_and_set_unet_being_trained(only_train_unet_number)
 
     # computed values
-
     @property
     def device(self):
         return self.accelerator.device

@@ -4,6 +4,11 @@ from math import ceil
 from collections.abc import Iterable
 from accelerate import Accelerator, DistributedType, DistributedDataParallelKwargs
 from functools import partial
+from torch.optim import Adam
+from ema_pytorch import EMA
+from torch.cuda.amp import GradScaler
+from torch.optim.lr_scheduler import CosineAnnealingLR, LambdaLR
+import pytorch_warmup as warmup
 
 
 def exists(val):
@@ -31,11 +36,11 @@ def split(t, split_size=None):
     return TypeError
 
 
-def find_first(fn, arr):
-    for ind, el in enumerate(arr):
-        if fn(el):
-            return ind
-    return -1
+def find_first(cond, arr):
+    for el in arr:
+        if cond(el):
+            return el
+    return None
 
 
 def default(val, d):
@@ -89,10 +94,24 @@ def groupby_prefix_and_trim(prefix, d):
     return kwargs_without_prefix, kwargs
 
 
+def cast_tuple(val, length=1):
+    if isinstance(val, list):
+        val = tuple(val)
+
+    return val if isinstance(val, tuple) else ((val,) * length)
+
+
 class ImagenTrainer(nn.Module):
-    def __init__(self, imagen=None, split_batches=True, only_train_unet_number=None, precision=None, fp16=False,
-                 **kwargs):
+    def __init__(self, imagen=None, imagen_checkpoint_path=None, use_ema=True, lr=1e-4, eps=1e-8, beta1=0.9, beta2=0.99,
+                 max_grad_norm=None, group_wd_params=True, warmup_steps=None, cosine_decay_max_steps=None,
+                 only_train_unet_number=None, fp16=False, precision=None, split_batches=True,
+                 dl_tuple_output_keywords_names=('images', 'text_embeds', 'text_masks', 'cond_images'), verbose=True,
+                 split_valid_fraction=0.025, split_valid_from_train=False, split_random_seed=42, checkpoint_path=None,
+                 checkpoint_every=None, checkpoint_fs=None, fs_kwargs: dict = None, max_checkpoints_keep=20, **kwargs):
         super().__init__()
+        ema_kwargs, kwargs = groupby_prefix_and_trim('ema_', kwargs)
+        self.is_elucidated = True
+
         self.imagen = imagen
         self.num_unets = len(self.imagen.unets)
 
@@ -106,12 +125,35 @@ class ImagenTrainer(nn.Module):
             'mixed_precision': accelerator_mixed_precision,
             'kwargs_handlers': [DistributedDataParallelKwargs(find_unused_parameters=True)], **accelerate_kwargs})
 
-    def validate_unet_number(self, unet_number=None):
-        if self.num_unets == 1:
-            unet_number = default(unet_number, 1)
+        self.use_ema = use_ema and self.is_main
+        self.ema_unets = nn.ModuleList([])
+        grad_scaler_enabled = fp16
+        lr, eps, warmup_steps, cosine_decay_max_steps = map(partial(cast_tuple, length=self.num_unets),
+                                                            (lr, eps, warmup_steps, cosine_decay_max_steps))
+        for ind, (unet, unet_lr, unet_eps, unet_warmup_steps, unet_cosine_decay_max_steps) in enumerate(
+                zip(self.imagen.unets, lr, eps, warmup_steps, cosine_decay_max_steps)):
+            optimizer = Adam(unet.parameters(), lr=unet_lr, eps=unet_eps, betas=(beta1, beta2), **kwargs)
+            if self.use_ema:
+                self.ema_unets.append(EMA(unet, **ema_kwargs))
 
-        assert 0 < unet_number <= self.num_unets, f'unet number should be in between 1 and {self.num_unets}'
-        return unet_number
+            scaler = GradScaler(enabled=grad_scaler_enabled)
+
+            scheduler = warmup_scheduler = None
+            if exists(unet_cosine_decay_max_steps):
+                scheduler = CosineAnnealingLR(optimizer, T_max=unet_cosine_decay_max_steps)
+            if exists(unet_warmup_steps):
+                warmup_scheduler = warmup.LinearWarmup(optimizer, warmup_period=unet_warmup_steps)
+                if not exists(scheduler):
+                    scheduler = LambdaLR(optimizer, lr_lambda=lambda step: 1.0)
+
+            setattr(self, f'optim{ind}', optimizer)
+            setattr(self, f'scaler{ind}', scaler)
+            setattr(self, f'scheduler{ind}', scheduler)
+            setattr(self, f'warmup{ind}', warmup_scheduler)
+
+    @property
+    def is_main(self):
+        return self.accelerator.is_main_process
 
     def wrap_unet(self, unet_number):
         if hasattr(self, 'one_unet_wrapped'):
@@ -123,35 +165,26 @@ class ImagenTrainer(nn.Module):
 
         optimizer = getattr(self, f'optim{unet_index}')
         scheduler = getattr(self, f'scheduler{unet_index}')
-
         optimizer = self.accelerator.prepare(optimizer)
-
         if exists(scheduler):
             scheduler = self.accelerator.prepare(scheduler)
 
         setattr(self, f'optim{unet_index}', optimizer)
         setattr(self, f'scheduler{unet_index}', scheduler)
-
         self.one_unet_wrapped = True
 
     def validate_and_set_unet_being_trained(self, unet_number=None):
-        if exists(unet_number):
-            self.validate_unet_number(unet_number)
-
         assert not exists(self.only_train_unet_number) or self.only_train_unet_number == unet_number, \
             'you cannot only train on one unet at a time. ' \
             'you will need to save the trainer into a checkpoint, and resume training on a new unet'
-
         self.only_train_unet_number = unet_number
         self.imagen.only_train_unet_number = unet_number
-
         if not exists(unet_number):
             return
 
         self.wrap_unet(unet_number)
 
     def set_accelerator_scaler(self, unet_number):
-        unet_number = self.validate_unet_number(unet_number)
         scaler = getattr(self, f'scaler{unet_number - 1}')
 
         self.accelerator.scaler = scaler
@@ -159,7 +192,7 @@ class ImagenTrainer(nn.Module):
             optimizer.scaler = scaler
 
     def forward(self, *args, unet_number=None, max_batch_size=None, **kwargs):
-        unet_number = self.validate_unet_number(unet_number)
+        unet_number = unet_number if unet_number is not None else self.num_unets
         self.validate_and_set_unet_being_trained(unet_number)
         self.set_accelerator_scaler(unet_number)
 
