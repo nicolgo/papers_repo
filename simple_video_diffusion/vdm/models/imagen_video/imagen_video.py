@@ -1192,8 +1192,6 @@ class Unet3D(nn.Module):
 
     def forward(self, x, time, *, lowres_cond_img=None, lowres_noise_times=None, text_embeds=None, text_mask=None,
                 cond_images=None, self_cond=None, cond_drop_prob=0.):
-        assert x.ndim == 5, 'input to 3d unet must have 5 dimensions (batch, channels, time, height, width)'
-
         batch_size, frames, device, dtype = x.shape[0], x.shape[2], x.device, x.dtype
 
         # add self conditioning if needed
@@ -1201,21 +1199,10 @@ class Unet3D(nn.Module):
             self_cond = default(self_cond, lambda: torch.zeros_like(x))
             x = torch.cat((x, self_cond), dim=1)
 
-        # add low resolution conditioning, if present
-        assert not (self.lowres_cond and not exists(
-            lowres_cond_img)), 'low resolution conditioning image must be present'
-        assert not (self.lowres_cond and not exists(
-            lowres_noise_times)), 'low resolution conditioning noise time must be present'
         if exists(lowres_cond_img):
             x = torch.cat((x, lowres_cond_img), dim=1)
 
-        # condition on input image
-        assert not (self.has_cond_image ^ exists(cond_images)), \
-            'you either requested to condition on an image on the unet, but the conditioning image is not supplied, or vice versa'
-
         if exists(cond_images):
-            assert cond_images.shape[1] == self.cond_images_channels, \
-                'the number of channels on the conditioning image you are passing in does not match what you specified on initialiation of the unet'
             cond_images = resize_video_to(cond_images, x.shape[-1])
             x = torch.cat((cond_images, x), dim=1)
 
