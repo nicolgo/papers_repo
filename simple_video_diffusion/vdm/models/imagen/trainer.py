@@ -13,8 +13,11 @@ from contextlib import contextmanager, nullcontext
 import torch.nn.functional as F
 import numpy as np
 import os
-
+from packaging import version
+from fsspec.core import url_to_fs
+from fsspec.implementations.local import LocalFileSystem
 from vdm.models.imagen.elucidated_imagen import NullUnet
+from vdm.models.imagen.version import __version__
 
 
 def exists(val):
@@ -168,6 +171,25 @@ def cast_tuple(val, length=1):
     return val if isinstance(val, tuple) else ((val,) * length)
 
 
+def url_to_bucket(url):
+    if '://' not in url:
+        return url
+
+
+def restore_parts(state_dict_target, state_dict_from):
+    for name, param in state_dict_from.items():
+
+        if name not in state_dict_target:
+            continue
+
+        if param.size() == state_dict_target[name].size():
+            state_dict_target[name].copy_(param)
+        else:
+            print(f"layer {name}({param.size()} different than target: {state_dict_target[name].size()}")
+
+    return state_dict_target
+
+
 class ImagenTrainer(nn.Module):
     def __init__(self, imagen=None, imagen_checkpoint_path=None, use_ema=True, lr=1e-4, eps=1e-8, beta1=0.9, beta2=0.99,
                  max_grad_norm=None, group_wd_params=True, warmup_steps=None, cosine_decay_max_steps=None,
@@ -226,8 +248,18 @@ class ImagenTrainer(nn.Module):
         self.checkpoint_path = checkpoint_path
         self.checkpoint_every = checkpoint_every  # save checkpoint duration
         self.max_checkpoints_keep = max_checkpoints_keep
-
+        self.fs = checkpoint_fs
         self.verbose = verbose
+        if not exists(self.fs):
+            fs_kwargs = default(fs_kwargs, {})
+            self.fs, _ = url_to_fs(default(checkpoint_path, './'), **fs_kwargs)
+
+        self.can_checkpoint = self.is_local_main if isinstance(checkpoint_fs, LocalFileSystem) else self.is_main
+        if exists(checkpoint_path) and self.can_checkpoint:
+            bucket = url_to_bucket(checkpoint_path)
+            if not self.fs.exists(bucket):
+                self.fs.mkdir(bucket)
+            self.load_from_checkpoint_folder()
 
     @property
     def is_main(self):
@@ -310,6 +342,129 @@ class ImagenTrainer(nn.Module):
                 unet.to(self.device if unet_index == index else 'cpu')
         self.ema_unet_being_trained_index = index
         return self.ema_unets[index]
+
+    def save(self, path, overwrite=True, without_optim_and_sched=False, **kwargs):
+        self.accelerator.wait_for_everyone()
+        if not self.can_checkpoint:
+            return
+        fs = self.fs
+        assert not (fs.exists(path) and not overwrite)
+        self.reset_ema_unets_all_one_device()
+        save_obj = dict(model=self.imagen.state_dict(), version=__version__, steps=self.steps.cpu(), **kwargs)
+        save_optim_and_sched_iter = range(0, self.num_unets) if not without_optim_and_sched else tuple()
+        for ind in save_optim_and_sched_iter:
+            scaler_key = f'scaler{ind}'
+            optimizer_key = f'optim{ind}'
+            scheduler_key = f'scheduler{ind}'
+            warmup_scheduler_key = f'warmup{ind}'
+            scaler = getattr(self, scaler_key)
+            optimizer = getattr(self, optimizer_key)
+            scheduler = getattr(self, scheduler_key)
+            warmup_scheduler = getattr(self, warmup_scheduler_key)
+
+            if exists(scheduler):
+                save_obj = {**save_obj, scheduler_key: scheduler.state_dict()}
+
+            if exists(warmup_scheduler):
+                save_obj = {**save_obj, warmup_scheduler_key: warmup_scheduler.state_dict()}
+            save_obj = {**save_obj, scaler_key: scaler.state_dict(), optimizer_key: optimizer.state_dict()}
+
+        if self.use_ema:
+            save_obj = {**save_obj, 'ema': self.ema_unets.state_dict()}
+
+        # determine if imagen config is available
+        if hasattr(self.imagen, '_config'):
+            self.print(f'this checkpoint is commandable from the CLI - "imagen --model {str(path)} \"<prompt>\""')
+
+            save_obj = {**save_obj, 'imagen_type': 'elucidated' if self.is_elucidated else 'original',
+                        'imagen_params': self.imagen._config}
+        # save to path
+        with fs.open(path, 'wb') as f:
+            torch.save(save_obj, f)
+
+        self.print(f'checkpoint saved to {path}')
+
+    def load(self, path, only_model=False, strict=True, noop_if_not_exist=False):
+        fs = self.fs
+        if noop_if_not_exist and not fs.exists(path):
+            self.print(f'trainer checkpoint not found at {str(path)}')
+            return
+
+        assert fs.exists(path), f'{path} does not exist'
+        self.reset_ema_unets_all_one_device()
+        # to avoid extra GPU memory usage in main process when using Accelerate
+        with fs.open(path) as f:
+            loaded_obj = torch.load(f, map_location='cpu')
+
+        if version.parse(__version__) != version.parse(loaded_obj['version']):
+            self.print(
+                f'loading saved imagen at version {loaded_obj["version"]}, but current package version is {__version__}')
+        try:
+            self.imagen.load_state_dict(loaded_obj['model'], strict=strict)
+        except RuntimeError:
+            print("Failed loading state dict. Trying partial load")
+            self.imagen.load_state_dict(restore_parts(self.imagen.state_dict(), loaded_obj['model']))
+
+        if only_model:
+            return loaded_obj
+        self.steps.copy_(loaded_obj['steps'])
+
+        for ind in range(0, self.num_unets):
+            scaler_key = f'scaler{ind}'
+            optimizer_key = f'optim{ind}'
+            scheduler_key = f'scheduler{ind}'
+            warmup_scheduler_key = f'warmup{ind}'
+
+            scaler = getattr(self, scaler_key)
+            optimizer = getattr(self, optimizer_key)
+            scheduler = getattr(self, scheduler_key)
+            warmup_scheduler = getattr(self, warmup_scheduler_key)
+
+            if exists(scheduler) and scheduler_key in loaded_obj:
+                scheduler.load_state_dict(loaded_obj[scheduler_key])
+
+            if exists(warmup_scheduler) and warmup_scheduler_key in loaded_obj:
+                warmup_scheduler.load_state_dict(loaded_obj[warmup_scheduler_key])
+
+            if exists(optimizer):
+                try:
+                    optimizer.load_state_dict(loaded_obj[optimizer_key])
+                    scaler.load_state_dict(loaded_obj[scaler_key])
+                except:
+                    self.print(
+                        'could not load optimizer and scaler, possibly because you have turned on mixed precision training since the last run. resuming with new optimizer and scalers')
+
+        if self.use_ema:
+            assert 'ema' in loaded_obj
+            try:
+                self.ema_unets.load_state_dict(loaded_obj['ema'], strict=strict)
+            except RuntimeError:
+                print("Failed loading state dict. Trying partial load")
+                self.ema_unets.load_state_dict(restore_parts(self.ema_unets.state_dict(), loaded_obj['ema']))
+        self.print(f'checkpoint loaded from {path}')
+        return loaded_obj
+
+    def load_from_checkpoint_folder(self, last_total_steps=-1):
+        if last_total_steps != -1:
+            filepath = os.path.join(self.checkpoint_path, f'checkpoint.{last_total_steps}.pt')
+            self.load(filepath)
+            return
+
+        sorted_checkpoints = self.all_checkpoints_sorted
+
+        if len(sorted_checkpoints) == 0:
+            self.print(f'no checkpoints found to load from at {self.checkpoint_path}')
+            return
+
+        last_checkpoint = sorted_checkpoints[0]
+        self.load(last_checkpoint)
+
+    @property
+    def all_checkpoints_sorted(self):
+        glob_pattern = os.path.join(self.checkpoint_path, '*.pt')
+        checkpoints = self.fs.glob(glob_pattern)
+        sorted_checkpoints = sorted(checkpoints, key=lambda x: int(str(x).split('.')[-2]), reverse=True)
+        return sorted_checkpoints
 
     def save_to_checkpoint_folder(self):
         self.accelerator.wait_for_everyone()
