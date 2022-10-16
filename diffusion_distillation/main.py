@@ -47,7 +47,7 @@ if __name__=="__main__":
         ),
         local_rng=jax.random.PRNGKey(0),
         augment=True)
-    train_iter = diffusion_distillation.numpy_iter(train_ds)
+    train_iter = diffusion_distillation.utils.numpy_iter(train_ds)
 
     # run training
     for step in range(10):
