@@ -68,7 +68,7 @@ def show_grid_images(imgs):
 
 
 def save_as_gif(images, file_name):
-    images = images.permute(1, 2, 3, 0)
+    images = images.cpu().permute(1, 2, 3, 0)
     image_list = []
     for i in range(images.shape[0]):
         image_list.append(images[i])

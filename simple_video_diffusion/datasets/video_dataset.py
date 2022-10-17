@@ -100,7 +100,7 @@ class VideoDataset(data.Dataset):
 
 
 if __name__ == "__main__":
-    data_path = "D:/ssd/nicol/VideoGPT/datasets/ucf101"
+    data_path = "D:/ssd/nicol/papers_repo/simple_video_diffusion/data/ucf101"
     sequence_length = 16
     resolution = 128
     train = True
@@ -110,7 +110,7 @@ if __name__ == "__main__":
     dataloader = data.DataLoader(dataset, batch_size=batch_size, num_workers=0,
                                  pin_memory=True, sampler=sampler, shuffle=sampler is None)
     videos = next(iter(dataloader)) # videos["video"] (B,C,T,H,W)
-    show_grid_images(einops.rearrange(videos["video"][0], "c t h w -> t c h w"))
+    # show_grid_images(einops.rearrange(videos["video"][0], "c t h w -> t c h w"))
 
     save_as_gif(videos["video"][0], 'sample.gif')
     # save_video_grid(videos["video"], 'samples.mp4')
