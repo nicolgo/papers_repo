@@ -44,11 +44,11 @@ if __name__ == "__main__":
             videos = videos.cuda()
             # videos = torch.randn(4, 3, 10, 32, 32).cuda()
             # feed images into imagen, training each unet in the cascade, for this example, only training unet 1
-            trainer = ImagenTrainer(imagen, checkpoint_path=logdir, checkpoint_every=10)
+            trainer = ImagenTrainer(imagen, checkpoint_path=logdir, checkpoint_every=1)
             trainer(videos, unet_number=1)
             trainer.update(unet_number=1)
             i += 1
-            if i % 1 == 0:
+            if i % 100 == 0:
                 videos = trainer.sample(video_frames=20)  # extrapolating to 20 frames from training on 10 frames
                 save_as_gif(videos[0], os.path.join(out_dir, f'generate_videos{i}.gif'))
     except KeyboardInterrupt:
