@@ -60,6 +60,7 @@ class VQVAE(pl.LightningModule):
         recon_loss, _, vq_output = self.forward(x)
         commitment_loss = vq_output['commitment_loss']
         loss = recon_loss + commitment_loss
+        self.log("train_loss", loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
