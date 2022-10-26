@@ -12,3 +12,5 @@ dependencies:
   - pip:
       - pytorch_lightning
       - tqdm
+      - h5py
+      - imageio
