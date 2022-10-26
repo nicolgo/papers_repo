@@ -14,3 +14,4 @@ dependencies:
       - tqdm
       - h5py
       - imageio
+      - matplotlib
