@@ -15,3 +15,8 @@ dependencies:
       - h5py
       - imageio
       - matplotlib
+      - scikit-video
+      - av
+      - gradio
+      - moviepy
+      - gdown

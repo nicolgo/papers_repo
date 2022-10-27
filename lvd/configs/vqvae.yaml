@@ -1,0 +1,22 @@
+running:
+  params:
+    gpus: 2
+    gradient_clip_val: 1
+
+model:
+  target: lvd.models.vqvae.VQVAE
+  params:
+    embedding_dim:
+    n_codes: 2048
+    n_hiddens: 240
+    n_res_layers: 4
+    downsample: (4,4,4)
+
+data:
+  target:
+  params:
+    data_path: data\ucf101
+    batch_size: 16
+    num_workers: 8
+    resolution: 128
+    sequence_length: 16
