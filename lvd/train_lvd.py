@@ -4,34 +4,30 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from datasets.video_dataset import VideoData
 from lvd.models.diffusion import LatentDiffusion
 
+from config_utils import *
+
 
 def main():
     pl.seed_everything(1234)
+    all_configs = get_all_configs_by_parser()
 
-    parser = argparse.ArgumentParser()
-    parser = pl.Trainer.add_argparse_args(parser)
-    parser.add_argument('--data_path', type=str, default="data/ucf101")
-    parser.add_argument('--resolution', type=int, default=128)
-    parser.add_argument('--sequence_length', type=int, default=16)
-    parser.add_argument('--batch_size', type=int, default=1)
-    parser.add_argument('--num_workers', type=int, default=0)
-    args = parser.parse_args()
-
-    data = VideoData(args)
+    data_params = get_module_params("data", all_configs)
+    data = VideoData(data_params)
     # pre-make relevant cached files if necessary
     data.train_dataloader()
     data.test_dataloader()
 
-    model = LatentDiffusion()  # here I use default parameters to init the model
+    model_config = all_configs.pop("model", OmegaConf.create())
+    model = LatentDiffusion(**model_config.get("params", dict()))  # here I use default parameters to init the model
 
     call_backs = [ModelCheckpoint(monitor='val/loss', mode='min', save_top_k=-1)]
 
+    trainer_params = get_module_params("trainer", all_configs)
     kwargs = dict()
-    if args.gpus > 1:
+    if trainer_params.gpus > 1:
         # find_unused_parameters = False to support gradient checkpointing
-        kwargs = dict(gpus=args.gpus, plugins=[pl.plugins.DDPPlugin(find_unused_parameters=False)])
-    trainer = pl.Trainer.from_argparse_args(args, callbacks=call_backs,
-                                            max_steps=args.max_steps, **kwargs)
+        kwargs = dict(gpus=trainer_params.gpus, plugins=[pl.plugins.DDPPlugin(find_unused_parameters=False)])
+    trainer = pl.Trainer.from_argparse_args(callbacks=call_backs, max_steps=trainer_params.max_steps, **kwargs)
 
     trainer.fit(model, data)
 
