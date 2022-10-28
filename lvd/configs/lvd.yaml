@@ -43,6 +43,11 @@ model:
         transformer_depth: 1
         context_dim: 512
 
+    first_stage_config:
+      target: lvd.models.vqvae.VQVAE
+      params:
+        ckpt_path: pretrained/epoch=35-step=8676.ckpt
+
     cond_stage_config:
       target: ldm.modules.encoders.modules.ClassEmbedder
       params:

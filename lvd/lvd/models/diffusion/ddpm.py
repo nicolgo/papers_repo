@@ -20,13 +20,13 @@ def disabled_train(self, mode=True):
 
 
 class DDPM(pl.LightningModule):
-    def __init__(self, timesteps=1000, beta_schedule="linear", loss_type="l2", ckpt_path=None,
+    def __init__(self, unet_config, timesteps=1000, beta_schedule="linear", loss_type="l2", ckpt_path=None,
                  ignore_keys=[], load_only_unet=False, monitor="val/loss", use_ema=True, first_stage_key="image",
                  image_size=256, channels=4, log_every_t=200, clip_denoised=True, linear_start=1e-4, linear_end=2e-2,
                  cosine_s=8e-3, given_betas=None, original_elbo_weight=0., v_posterior=0.,
                  # weight for choosing posterior variance as sigma = (1-v) * beta_tilde + v * beta
-                 l_simple_weight=1., conditioning_key=None, parameterization="eps",
-                 scheduler_config=None, use_positional_encodings=False, learn_logvar=False, logvar_init=0., ):
+                 l_simple_weight=1., conditioning_key=None, parameterization="eps", scheduler_config=None,
+                 use_positional_encodings=False, learn_logvar=False, logvar_init=0., ):
         super().__init__()
         assert parameterization in ["eps", "x0"], 'currently only supporting "eps" and "x0"'
         self.parameterization = parameterization
@@ -37,8 +37,8 @@ class DDPM(pl.LightningModule):
         self.image_size = image_size  # try conv?
         self.channels = channels
         self.use_positional_encodings = use_positional_encodings
-        self.model = DiffusionWrapper(conditioning_key)
-        count_params(self.model, verbose=True)
+        # self.model = DiffusionWrapper(unet_config, conditioning_key)
+        # count_params(self.model, verbose=True)
         self.use_ema = use_ema
         if self.use_ema:
             self.model_ema = LitEma(self.model)
@@ -69,8 +69,8 @@ class DDPM(pl.LightningModule):
 
     def q_sample(self, x_start, t, noise=None):
         noise = default(noise, lambda: torch.randn_like(x_start))
-        return (extract_into_tensor(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start +
-                extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise)
+        return (extract_into_tensor(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start + extract_into_tensor(
+            self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise)
 
     def get_input(self, batch, k):
         x = batch[k]
@@ -114,21 +114,12 @@ class DDPM(pl.LightningModule):
 
 
 class LatentDiffusion(DDPM):
-    def __init__(self, num_timesteps_cond=1,
-                 cond_stage_key="image",
-                 cond_stage_trainable=True,
-                 concat_mode=True,
-                 cond_stage_forward=None,
-                 conditioning_key="crossatten",
-                 scale_factor=1.0,
-                 scale_by_std=False):
-        # TODO: set some parameters here
-        conditioning_key = "crossattn"
-        vqvae_file = "pretrained/vqvae.pt"
-
+    def __init__(self, first_stage_config, cond_stage_config, num_timesteps_cond=1, cond_stage_key="image",
+                 cond_stage_trainable=True, concat_mode=True, cond_stage_forward=None, conditioning_key="crossatten",
+                 scale_factor=1.0, scale_by_std=False, *args, **kwargs):
         self.num_timesteps_cond = default(num_timesteps_cond, 1)
         self.scale_by_std = scale_by_std
-        super().__init__(conditioning_key=conditioning_key)
+        super().__init__(conditioning_key=conditioning_key, *args, **kwargs)
         self.concat_mode = concat_mode
         self.cond_stage_trainable = cond_stage_trainable
         self.cond_stage_key = cond_stage_key
@@ -137,18 +128,15 @@ class LatentDiffusion(DDPM):
             self.scale_factor = scale_factor
         else:
             self.register_buffer('scale_factor', torch.tensor(scale_factor))
-        self.instantiate_first_stage(vqvae_file)
+        self.instantiate_first_stage(first_stage_config)
         self.instantiate_cond_stage()
         self.cond_stage_forward = cond_stage_forward
         self.clip_denoised = False
         self.bbox_tokenizer = None
-
         self.restarted_from_ckpt = False
-        # if ckpt_path is not None:
-        #     self.init_from_ckpt(ckpt_path, ignore_keys)
-        #     self.restarted_from_ckpt = True
 
-    def instantiate_first_stage(self, vqvae_file):
+    def instantiate_first_stage(self, first_stage_config):
+        vqvae_file = first_stage_config.ckpt_path
         if not os.path.exists(vqvae_file):
             raise FileNotFoundError(f"cannot load the vq-vae from {vqvae_file} ")
         model = VQVAE.load_state_dict(vqvae_file)
@@ -239,9 +227,9 @@ class LatentDiffusion(DDPM):
 
 
 class DiffusionWrapper(pl.LightningModule):
-    def __init__(self, conditioning_key):
+    def __init__(self, diff_model_config, conditioning_key):
         super().__init__()
-        self.diffusion_model = UNetModel()  # UNet Model
+        self.diffusion_model = UNetModel(**diff_model_config.get("params", dict()))  # UNet Model
         self.conditioning_key = conditioning_key
         assert self.conditioning_key in [None, 'concat', 'crossattn', 'hybrid', 'adm']
 

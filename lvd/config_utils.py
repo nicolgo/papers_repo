@@ -6,7 +6,7 @@ from omegaconf import OmegaConf
 def get_all_configs_by_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("-b", "--base", nargs="*", metavar="base_config.yaml",
-                        help="paths to base configs. Loaded from left-to-right. ", default=list(), )
+                        help="paths to base configs. Loaded from left-to-right. ", default=list(),)
     parser = pl.Trainer.add_argparse_args(parser)
     opt, unknown = parser.parse_known_args()
 
