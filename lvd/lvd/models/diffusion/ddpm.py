@@ -315,13 +315,13 @@ class LatentDiffusion(DDPM):
         self.restarted_from_ckpt = False
 
     def instantiate_first_stage(self, first_stage_config):
-        vqvae_file = first_stage_config.ckpt_path
+        vqvae_file = first_stage_config['params'].ckpt_path
         if not os.path.exists(vqvae_file):
             raise FileNotFoundError(f"cannot load the vq-vae from {vqvae_file} ")
-        model = VQVAE.load_state_dict(vqvae_file)
-        self.first_stage_model = model.eval()
+        vqvae = VQVAE.load_from_checkpoint(vqvae_file)
+        self.first_stage_model = vqvae.eval()
         self.first_stage_model.train = disabled_train
-        self.model.codebook._need_init = False
+        self.first_stage_model.codebook._need_init = False
         for param in self.first_stage_model.parameters():
             param.requires_grad = False
 
