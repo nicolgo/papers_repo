@@ -212,11 +212,11 @@ class UNetModel(nn.Module):
                                         nn.Linear(time_embed_dim, time_embed_dim))
         if self.num_classes is not None:
             self.label_emb = nn.Embedding(num_classes, time_embed_dim)
-
-        ################################# the input blocks #############################
         self.input_blocks = nn.ModuleList(
             [TimestepEmbedSequential(conv_nd(dims, in_channels, model_channels, 3, padding=1))])
-        self.feature_size = model_channels
+
+        ################################# the input blocks #############################
+        self._feature_size = model_channels
         input_block_chans = [model_channels]
         ch = model_channels
         ds = 1
