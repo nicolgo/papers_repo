@@ -46,7 +46,7 @@ model:
     first_stage_config:
       target: lvd.models.vqvae.VQVAE
       params:
-        ckpt_path: pretrained\epoch=68-step=16629.ckpt
+        ckpt_path: pretrained/epoch=68-step=16629.ckpt
 
     cond_stage_config:
       target: lvd.modules.encoders.ClassEmbedder
@@ -57,10 +57,10 @@ model:
 data:
   target: datasets.video_dataset.VideoData
   params:
-    data_path: data\ucf101
+    data_path: data/ucf101
     batch_size: 2
     num_workers: 0
     resolution: 64
-    sequence_length: 2
+    sequence_length: 16
 
 

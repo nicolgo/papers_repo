@@ -234,7 +234,7 @@ class UNetModel(nn.Module):
                     if legacy:
                         dim_head = ch // num_heads if use_spatial_transformer else num_head_channels
 
-                    layers.append(SpatialTransformer(ch, num_heads, dim_head, depth=transformer_depth,
+                    layers.append(SpatialTransformer(ch, num_heads, dim_head, depth=transformer_depth,dims=dims,
                                                      context_dim=context_dim) if use_spatial_transformer else AttentionBlock(
                         ch, use_checkpoint=use_checkpoint, num_head_channels=dim_head, num_heads=num_heads,
                         use_new_attention_order=use_new_attention_order))
@@ -265,7 +265,7 @@ class UNetModel(nn.Module):
                      use_scale_shift_norm=use_scale_shift_norm, ),
             AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=num_heads, num_head_channels=dim_head,
                            use_new_attention_order=use_new_attention_order, ) if not use_spatial_transformer else
-            SpatialTransformer(ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim),
+            SpatialTransformer(ch, num_heads, dim_head, dims=dims,depth=transformer_depth, context_dim=context_dim),
             ResBlock(ch, time_embed_dim, dropout, dims=dims, use_checkpoint=use_checkpoint,
                      use_scale_shift_norm=use_scale_shift_norm, ), )
         self._feature_size += ch
@@ -287,7 +287,7 @@ class UNetModel(nn.Module):
                     if legacy:
                         dim_head = ch // num_heads if use_spatial_transformer else num_head_channels
 
-                    layers.append(SpatialTransformer(ch, num_heads, dim_head, depth=transformer_depth,
+                    layers.append(SpatialTransformer(ch, num_heads, dim_head, depth=transformer_depth,dims=dims,
                                                      context_dim=context_dim) if use_spatial_transformer else
                                   AttentionBlock(ch, use_checkpoint=use_checkpoint, num_head_channels=dim_head,
                                                  num_heads=num_heads, use_new_attention_order=use_new_attention_order))

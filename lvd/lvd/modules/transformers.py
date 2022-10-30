@@ -49,9 +49,11 @@ class FeedForward(nn.Module):
         super().__init__()
         inner_dim = int(dim * mult)
         dim_out = default(dim_out, dim)
-        project_in = nn.Sequential(nn.Linear(dim, inner_dim), nn.GELU()) if not glu else GEGLU(dim, inner_dim)
+        project_in = nn.Sequential(
+            nn.Linear(dim, inner_dim), nn.GELU()) if not glu else GEGLU(dim, inner_dim)
 
-        self.net = nn.Sequential(project_in, nn.Dropout(dropout), nn.Linear(inner_dim, dim_out))
+        self.net = nn.Sequential(project_in, nn.Dropout(
+            dropout), nn.Linear(inner_dim, dim_out))
 
     def forward(self, x):
         return self.net(x)
@@ -81,11 +83,13 @@ class LinearAttention(nn.Module):
     def forward(self, x):
         b, c, h, w = x.shape
         qkv = self.to_qkv(x)
-        q, k, v = rearrange(qkv, 'b (qkv heads c) h w -> qkv b heads c (h w)', heads=self.heads, qkv=3)
+        q, k, v = rearrange(
+            qkv, 'b (qkv heads c) h w -> qkv b heads c (h w)', heads=self.heads, qkv=3)
         k = k.softmax(dim=-1)
         context = torch.einsum('bhdn,bhen->bhde', k, v)
         out = torch.einsum('bhde,bhdn->bhen', context, q)
-        out = rearrange(out, 'b heads c (h w) -> b (heads c) h w', heads=self.heads, h=h, w=w)
+        out = rearrange(out, 'b heads c (h w) -> b (heads c) h w',
+                        heads=self.heads, h=h, w=w)
         return self.to_out(out)
 
 
@@ -95,10 +99,14 @@ class SpatialSelfAttention(nn.Module):
         self.in_channels = in_channels
 
         self.norm = Normalize(in_channels)
-        self.q = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
-        self.k = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
-        self.v = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
-        self.proj_out = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
+        self.q = torch.nn.Conv2d(
+            in_channels, in_channels, kernel_size=1, stride=1, padding=0)
+        self.k = torch.nn.Conv2d(
+            in_channels, in_channels, kernel_size=1, stride=1, padding=0)
+        self.v = torch.nn.Conv2d(
+            in_channels, in_channels, kernel_size=1, stride=1, padding=0)
+        self.proj_out = torch.nn.Conv2d(
+            in_channels, in_channels, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
         h_ = x
@@ -139,7 +147,8 @@ class CrossAttention(nn.Module):
         self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
         self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
 
-        self.to_out = nn.Sequential(nn.Linear(inner_dim, query_dim), nn.Dropout(dropout))
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, query_dim), nn.Dropout(dropout))
 
     def forward(self, x, context=None, mask=None):
         h = self.heads
@@ -149,7 +158,8 @@ class CrossAttention(nn.Module):
         k = self.to_k(context)
         v = self.to_v(context)
 
-        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
+        q, k, v = map(lambda t: rearrange(
+            t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
 
         sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
 
@@ -199,30 +209,37 @@ class SpatialTransformer(nn.Module):
     Finally, reshape to image
     """
 
-    def __init__(self, in_channels, n_heads, d_head, depth=1, dropout=0., context_dim=None):
+    def __init__(self, in_channels, n_heads, d_head, dims=2, depth=1, dropout=0., context_dim=None):
         super().__init__()
         self.in_channels = in_channels
         inner_dim = n_heads * d_head
         self.norm = Normalize(in_channels)
 
-        self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
+        self.proj_in = conv_nd(dims, in_channels, inner_dim,
+                               kernel_size=1, stride=1, padding=0)
 
         self.transformer_blocks = nn.ModuleList(
             [BasicTransformerBlock(inner_dim, n_heads, d_head, dropout=dropout, context_dim=context_dim) for d in
              range(depth)])
 
-        self.proj_out = zero_module(nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0))
+        self.proj_out = zero_module(
+            conv_nd(dims, inner_dim, in_channels, kernel_size=1, stride=1, padding=0))
 
     def forward(self, x, context=None):
         # note: if no context is given, cross-attention defaults to self-attention
-        b, c, h, w = x.shape
+        if len(x.shape) == 4:
+            _, _, h, w = x.shape
+        else:
+            _, _, t, h, w = x.shape
         x_in = x
         x = self.norm(x)
         x = self.proj_in(x)
-        x = rearrange(x, 'b c h w -> b (h w) c')
+        x = rearrange(x, 'b c h w -> b (h w) c') if len(
+            x.shape) == 4 else rearrange(x, 'b c t h w -> b (t h w) c')
         for block in self.transformer_blocks:
             x = block(x, context=context)
-        x = rearrange(x, 'b (h w) c -> b c h w', h=h, w=w)
+        x = rearrange(x, 'b (h w) c -> b c h w', h=h, w=w) if len(
+            x.shape) == 4 else rearrange(x, 'b (t h w) c -> b c t h w', t=t, h=h, w=w)
         x = self.proj_out(x)
         return x + x_in
 
@@ -267,9 +284,11 @@ class QKVAttentionLegacy(nn.Module):
         bs, width, length = qkv.shape
         assert width % (3 * self.n_heads) == 0
         ch = width // (3 * self.n_heads)
-        q, k, v = qkv.reshape(bs * self.n_heads, ch * 3, length).split(ch, dim=1)
+        q, k, v = qkv.reshape(bs * self.n_heads, ch * 3,
+                              length).split(ch, dim=1)
         scale = 1 / math.sqrt(math.sqrt(ch))
-        weight = torch.einsum("bct,bcs->bts", q * scale, k * scale)  # More stable with f16 than dividing afterwards
+        # More stable with f16 than dividing afterwards
+        weight = torch.einsum("bct,bcs->bts", q * scale, k * scale)
         weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
         a = torch.einsum("bts,bcs->bct", weight, v)
         return a.reshape(bs, -1, length)
@@ -300,9 +319,10 @@ class QKVAttention(nn.Module):
         q, k, v = qkv.chunk(3, dim=1)
         scale = 1 / math.sqrt(math.sqrt(ch))
         weight = torch.einsum("bct,bcs->bts", (q * scale).view(bs * self.n_heads, ch, length),
-            (k * scale).view(bs * self.n_heads, ch, length), )  # More stable with f16 than dividing afterwards
+                              (k * scale).view(bs * self.n_heads, ch, length), )  # More stable with f16 than dividing afterwards
         weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
-        a = torch.einsum("bts,bcs->bct", weight, v.reshape(bs * self.n_heads, ch, length))
+        a = torch.einsum("bts,bcs->bct", weight,
+                         v.reshape(bs * self.n_heads, ch, length))
         return a.reshape(bs, -1, length)
 
     @staticmethod
@@ -318,14 +338,14 @@ class AttentionBlock(nn.Module):
     """
 
     def __init__(self, channels, num_heads=1, num_head_channels=-1, use_checkpoint=False,
-            use_new_attention_order=False, ):
+                 use_new_attention_order=False, ):
         super().__init__()
         self.channels = channels
         if num_head_channels == -1:
             self.num_heads = num_heads
         else:
             assert (
-                    channels % num_head_channels == 0), f"q,k,v channels {channels} is not divisible by num_head_channels {num_head_channels}"
+                channels % num_head_channels == 0), f"q,k,v channels {channels} is not divisible by num_head_channels {num_head_channels}"
             self.num_heads = channels // num_head_channels
         self.use_checkpoint = use_checkpoint
         self.norm = normalization(channels)
