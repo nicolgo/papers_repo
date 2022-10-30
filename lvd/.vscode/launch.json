@@ -5,14 +5,29 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "windows_lvd",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--base=configs/lvd.yaml",
+            ]
+        },
+        {
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args": ["--data_path","data/ucf101_2",
-                    "--gpus=2","--batch_size=32","--num_workers=8"]
+            "args": [
+                "--data_path=data/ucf101_2",
+                "--gpus=2",
+                "--batch_size=2",
+                "--num_workers=0"
+            ]
         }
     ]
 }

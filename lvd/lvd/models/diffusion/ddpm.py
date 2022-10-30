@@ -13,7 +13,7 @@ from lvd.util import count_params
 from lvd.modules import LitEma
 from lvd.modules.diffusionmodules.util import make_beta_schedule, extract_into_tensor, noise_like
 from lvd.models.vqvae import VQVAE
-from lvd.modules.encoders import ClassEmbedder
+from lvd.util import instantiate_from_config
 
 
 def disabled_train(self, mode=True):
@@ -37,6 +37,7 @@ class DDPM(pl.LightningModule):
         self.cond_stage_model = None
         self.clip_denoised = clip_denoised
         self.log_every_t = log_every_t
+        self.first_stage_key = first_stage_key
         self.image_size = image_size  # try conv?
         self.channels = channels
         self.use_positional_encodings = use_positional_encodings
@@ -245,12 +246,15 @@ class DDPM(pl.LightningModule):
         t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device).long()
         return self.p_losses(x, t, *args, **kwargs)
 
-    def get_input(self, batch, k):
-        x = batch[k]
+    def get_input(self, batch, key):
+        x = batch[key]
         if len(x.shape) == 3:
             x = x[..., None]
-        x = rearrange(x, 'b h w c -> b c h w')
-        x = x.to(memory_format=torch.contiguous_format).float()
+        if key == "image":
+            x = rearrange(x, 'b h w c -> b c h w')
+            x = x.to(memory_format=torch.contiguous_format).float()
+        elif key == "video":
+            x = x.to(memory_format=torch.contiguous_format).float()  # (b c t h w)
         return x
 
     def shared_step(self, batch):
@@ -308,7 +312,7 @@ class LatentDiffusion(DDPM):
         else:
             self.register_buffer('scale_factor', torch.tensor(scale_factor))
         self.instantiate_first_stage(first_stage_config)
-        self.instantiate_cond_stage()
+        self.instantiate_cond_stage(cond_stage_config)
         self.cond_stage_forward = cond_stage_forward
         self.clip_denoised = False
         self.bbox_tokenizer = None
@@ -325,8 +329,8 @@ class LatentDiffusion(DDPM):
         for param in self.first_stage_model.parameters():
             param.requires_grad = False
 
-    def instantiate_cond_stage(self):
-        model = ClassEmbedder(embed_dim=512, n_classes=1)
+    def instantiate_cond_stage(self,config):
+        model = instantiate_from_config(config)
         self.cond_stage_model = model
 
     @torch.no_grad()
@@ -341,16 +345,17 @@ class LatentDiffusion(DDPM):
         return self.scale_factor * z
 
     @torch.no_grad()
-    def get_input(self, batch, cond_key=None):
-        x = super().get_input(batch)
+    def get_input(self, batch, key, cond_key=None):
+        x = super().get_input(batch, key)
         x = x.to(self.device)
-        encoder_posterior = self.encode_first_stage(x)
-        z = self.get_first_stage_encoding(encoder_posterior).detach()
-        out = [z, x]
+        out = [x, batch]
+        # encoder_posterior = self.encode_first_stage(x)
+        # z = self.get_first_stage_encoding(encoder_posterior).detach()
+        # out = [z, batch]
         return out
 
     def shared_step(self, batch, **kwargs):
-        x, c = self.get_input(batch)
+        x, c = self.get_input(batch,self.first_stage_key)
         loss = self(x, c)
         return loss
 
@@ -390,6 +395,14 @@ class LatentDiffusion(DDPM):
 
         return loss, loss_dict
 
+    def get_learned_conditioning(self, c):
+        if self.cond_stage_forward is None:
+            c = self.cond_stage_model(c)
+        else:
+            assert hasattr(self.cond_stage_model, self.cond_stage_forward)
+            c = getattr(self.cond_stage_model, self.cond_stage_forward)(c)
+        return c
+
     def forward(self, x, c, *args, **kwargs):
         t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device).long()
         if self.model.conditioning_key is not None:
@@ -403,6 +416,15 @@ class LatentDiffusion(DDPM):
         parser = argparse.ArgumentParser(parents=[parent_parser], add_help=False)
         # latent diffusion parameters
         return parser
+
+    def configure_optimizers(self):
+        lr = self.learning_rate
+        params = list(self.model.parameters())
+        if self.cond_stage_trainable:
+            print(f"{self.__class__.__name__}: Also optimizing conditioner params!")
+            params = params + list(self.cond_stage_model.parameters())
+        opt = torch.optim.AdamW(params, lr=lr)
+        return opt
 
 
 class DiffusionWrapper(pl.LightningModule):

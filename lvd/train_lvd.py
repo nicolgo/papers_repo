@@ -19,10 +19,10 @@ def main():
 
     model_config = all_configs.pop("model", OmegaConf.create())
     model = LatentDiffusion(**model_config.get("params", dict()))  # here I use default parameters to init the model
-
-    call_backs = [ModelCheckpoint(monitor='val/loss', mode='min')]
+    model.learning_rate = model_config.base_learning_rate
 
     trainer_kwargs = dict()
+    call_backs = [ModelCheckpoint(monitor='val/loss', mode='min')]
     trainer_kwargs["callbacks"] = call_backs
     trainer = pl.Trainer.from_argparse_args(trainer_opt, **trainer_kwargs)
 
