@@ -6,8 +6,8 @@ dependencies:
   - python=3.10.4
   - pip=22.2.2
   - conda-forge::ffmpeg
-  - pytorch
-  - torchvision
+  - pytorch=1.12.1
+  - torchvision=0.13.1
   - cudatoolkit=11.3
   - pip:
       - pytorch_lightning

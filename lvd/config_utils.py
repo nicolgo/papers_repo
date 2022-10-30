@@ -1,5 +1,6 @@
 import argparse
 import pytorch_lightning as pl
+import torch
 from omegaconf import OmegaConf
 
 
@@ -15,13 +16,13 @@ def get_all_configs_by_parser():
     all_configs = OmegaConf.merge(*configs, cli)
 
     trainer_params = get_module_params("trainer", all_configs)
-    if "gpus" not in trainer_params:
-        del trainer_params["accelerator"]
-        cpu = True
-    else:
-        gpuinfo = trainer_params["gpus"]
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if "devices" in trainer_params and device.type == "cuda":
+        trainer_params["accelerator"] = 'gpu'
+        gpuinfo = trainer_params["devices"]
         print(f"Running on GPUs {gpuinfo}")
-        cpu = False
+    else:
+        trainer_params["accelerator"] = 'cpu'
     trainer_opt = argparse.Namespace(**trainer_params)
     return all_configs, trainer_opt
 
