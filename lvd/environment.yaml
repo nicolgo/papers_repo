@@ -3,14 +3,14 @@ channels:
   - pytorch
   - defaults
 dependencies:
-  - python=3.10.4
-  - pip=22.2.2
-  - conda-forge::ffmpeg
-  - pytorch=1.12.1
-  - torchvision=0.13.1
-  - cudatoolkit=11.3
+  - python==3.10.4
+  - pip==22.2.2
+  - conda-forge::ffmpeg==5.0.1
+  - pytorch==1.12.1
+  - torchvision==0.13.1
+  - cudatoolkit==11.3.1
   - pip:
-      - pytorch_lightning
+      - pytorch_lightning==1.7.7
       - tqdm
       - h5py
       - imageio
