@@ -5,6 +5,7 @@ import argparse
 import numpy as np
 from functools import partial
 import os
+from contextlib import contextmanager
 from tqdm import tqdm
 from einops import rearrange
 from .util import *
@@ -124,6 +125,21 @@ class DDPM(pl.LightningModule):
         lvlb_weights[0] = lvlb_weights[1]
         self.register_buffer('lvlb_weights', lvlb_weights, persistent=False)
         assert not torch.isnan(self.lvlb_weights).all()
+
+    @contextmanager
+    def ema_scope(self, context=None):
+        if self.use_ema:
+            self.model_ema.store(self.model.parameters())
+            self.model_ema.copy_to(self.model)
+            if context is not None:
+                print(f"{context}: Switched to EMA weights")
+        try:
+            yield None
+        finally:
+            if self.use_ema:
+                self.model_ema.restore(self.model.parameters())
+                if context is not None:
+                    print(f"{context}: Restored training weights")
 
     def q_mean_variance(self, x_start, t):
         """
@@ -299,7 +315,7 @@ class DDPM(pl.LightningModule):
 class LatentDiffusion(DDPM):
     def __init__(self, first_stage_config, cond_stage_config, num_timesteps_cond=1, cond_stage_key="image",
                  cond_stage_trainable=True, concat_mode=True, cond_stage_forward=None, conditioning_key="crossatten",
-                 scale_factor=1.0, scale_by_std=False, *args, **kwargs):
+                 scale_factor=1.0, scale_by_std=False, enable_first_stage=False, *args, **kwargs):
         self.num_timesteps_cond = default(num_timesteps_cond, 1)
         self.scale_by_std = scale_by_std
         super().__init__(conditioning_key=conditioning_key, *args, **kwargs)
@@ -317,6 +333,7 @@ class LatentDiffusion(DDPM):
         self.clip_denoised = False
         self.bbox_tokenizer = None
         self.restarted_from_ckpt = False
+        self.enable_first_stage = enable_first_stage
 
     def instantiate_first_stage(self, first_stage_config):
         vqvae_file = first_stage_config['params'].ckpt_path
@@ -348,10 +365,12 @@ class LatentDiffusion(DDPM):
     def get_input(self, batch, key, cond_key=None):
         x = super().get_input(batch, key)
         x = x.to(self.device)
-        out = [x, batch]
-        # encoder_posterior = self.encode_first_stage(x)
-        # z = self.get_first_stage_encoding(encoder_posterior).detach()
-        # out = [z, batch]
+        if self.enable_first_stage:
+            encoder_posterior = self.encode_first_stage(x)
+            z = self.get_first_stage_encoding(encoder_posterior).detach()
+        else:
+            z = x
+        out = [z, batch]
         return out
 
     def shared_step(self, batch, **kwargs):

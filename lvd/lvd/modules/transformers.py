@@ -1,3 +1,4 @@
+from doctest import FAIL_FAST
 from inspect import isfunction
 import math
 import torch
@@ -228,18 +229,23 @@ class SpatialTransformer(nn.Module):
     def forward(self, x, context=None):
         # note: if no context is given, cross-attention defaults to self-attention
         if len(x.shape) == 4:
+            is_image = True
+        else:
+            is_image = False
+        if is_image:
             _, _, h, w = x.shape
         else:
-            _, _, t, h, w = x.shape
+            _, _, f, h, w = x.shape
         x_in = x
         x = self.norm(x)
         x = self.proj_in(x)
-        x = rearrange(x, 'b c h w -> b (h w) c') if len(
-            x.shape) == 4 else rearrange(x, 'b c t h w -> b (t h w) c')
+        x = rearrange(x, 'b c h w -> b (h w) c') if is_image else rearrange(x, 'b c f h w -> b (f h w) c')
         for block in self.transformer_blocks:
             x = block(x, context=context)
-        x = rearrange(x, 'b (h w) c -> b c h w', h=h, w=w) if len(
-            x.shape) == 4 else rearrange(x, 'b (t h w) c -> b c t h w', t=t, h=h, w=w)
+        if is_image:
+            x = rearrange(x, 'b (h w) c -> b c h w', h=h, w=w)
+        else:
+            x = rearrange(x, 'b (f h w) c -> b c f h w', f=f, h=h, w=w)
         x = self.proj_out(x)
         return x + x_in
 

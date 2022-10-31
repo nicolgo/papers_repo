@@ -5,6 +5,17 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "latent_experiment",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--base=configs/lvd_latent.yaml",
+            ]
+        },
+        {
             "name": "windows_lvd",
             "type": "python",
             "request": "launch",
