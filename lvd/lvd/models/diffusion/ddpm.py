@@ -8,6 +8,8 @@ import os
 from contextlib import contextmanager
 from tqdm import tqdm
 from einops import rearrange
+
+import lvd.modules.diffusionmodules
 from .util import *
 from lvd.modules.diffusionmodules.unet_model import UNetModel
 from lvd.util import count_params
@@ -346,7 +348,7 @@ class LatentDiffusion(DDPM):
         for param in self.first_stage_model.parameters():
             param.requires_grad = False
 
-    def instantiate_cond_stage(self,config):
+    def instantiate_cond_stage(self, config):
         model = instantiate_from_config(config)
         self.cond_stage_model = model
 
@@ -374,7 +376,7 @@ class LatentDiffusion(DDPM):
         return out
 
     def shared_step(self, batch, **kwargs):
-        x, c = self.get_input(batch,self.first_stage_key)
+        x, c = self.get_input(batch, self.first_stage_key)
         loss = self(x, c)
         return loss
 
@@ -449,7 +451,8 @@ class LatentDiffusion(DDPM):
 class DiffusionWrapper(pl.LightningModule):
     def __init__(self, diff_model_config, conditioning_key):
         super().__init__()
-        self.diffusion_model = UNetModel(**diff_model_config.get("params", dict()))  # UNet Model
+        # self.diffusion_model = UNetModel(**diff_model_config.get("params", dict()))
+        self.diffusion_model = instantiate_from_config(diff_model_config)  # UNet Model
         self.conditioning_key = conditioning_key
         assert self.conditioning_key in [None, 'concat', 'crossattn', 'hybrid', 'adm']
 

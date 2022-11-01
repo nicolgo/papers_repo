@@ -116,7 +116,9 @@ class ResBlock(TimestepBlock):
         self.use_scale_shift_norm = use_scale_shift_norm
 
         self.in_layers = nn.Sequential(normalization(channels), nn.SiLU(),
-                                       conv_nd(dims, channels, self.out_channels, 3, padding=1), )
+                                       conv_nd(dims, channels, self.out_channels, 3, padding=1) if dims != 3 else
+                                       nn.Conv3d(channels, self.out_channels, kernel_size=(1, 3, 3), stride=1,
+                                                 padding=(0, 1, 1)), )
 
         self.updown = up or down
 
@@ -132,7 +134,8 @@ class ResBlock(TimestepBlock):
         self.emb_layers = nn.Sequential(nn.SiLU(), linear(emb_channels,
                                                           2 * self.out_channels if use_scale_shift_norm else self.out_channels, ), )
         self.out_layers = nn.Sequential(normalization(self.out_channels), nn.SiLU(), nn.Dropout(p=dropout), zero_module(
-            conv_nd(dims, self.out_channels, self.out_channels, 3, padding=1)), )
+            conv_nd(dims, self.out_channels, self.out_channels, 3, padding=1)) if dims != 3 else nn.Conv3d(
+            self.out_channels, self.out_channels, kernel_size=(1, 3, 3), stride=1, padding=(0, 1, 1)), )
 
         if self.out_channels == channels:
             self.skip_connection = nn.Identity()
@@ -234,7 +237,7 @@ class UNetModel(nn.Module):
                     if legacy:
                         dim_head = ch // num_heads if use_spatial_transformer else num_head_channels
 
-                    layers.append(SpatialTransformer(ch, num_heads, dim_head, depth=transformer_depth,dims=dims,
+                    layers.append(SpatialTransformer(ch, num_heads, dim_head, depth=transformer_depth, dims=dims,
                                                      context_dim=context_dim) if use_spatial_transformer else AttentionBlock(
                         ch, use_checkpoint=use_checkpoint, num_head_channels=dim_head, num_heads=num_heads,
                         use_new_attention_order=use_new_attention_order))
@@ -265,7 +268,7 @@ class UNetModel(nn.Module):
                      use_scale_shift_norm=use_scale_shift_norm, ),
             AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=num_heads, num_head_channels=dim_head,
                            use_new_attention_order=use_new_attention_order, ) if not use_spatial_transformer else
-            SpatialTransformer(ch, num_heads, dim_head, dims=dims,depth=transformer_depth, context_dim=context_dim),
+            SpatialTransformer(ch, num_heads, dim_head, dims=dims, depth=transformer_depth, context_dim=context_dim),
             ResBlock(ch, time_embed_dim, dropout, dims=dims, use_checkpoint=use_checkpoint,
                      use_scale_shift_norm=use_scale_shift_norm, ), )
         self._feature_size += ch
@@ -287,7 +290,7 @@ class UNetModel(nn.Module):
                     if legacy:
                         dim_head = ch // num_heads if use_spatial_transformer else num_head_channels
 
-                    layers.append(SpatialTransformer(ch, num_heads, dim_head, depth=transformer_depth,dims=dims,
+                    layers.append(SpatialTransformer(ch, num_heads, dim_head, depth=transformer_depth, dims=dims,
                                                      context_dim=context_dim) if use_spatial_transformer else
                                   AttentionBlock(ch, use_checkpoint=use_checkpoint, num_head_channels=dim_head,
                                                  num_heads=num_heads, use_new_attention_order=use_new_attention_order))
@@ -316,6 +319,145 @@ class UNetModel(nn.Module):
         """
         assert (y is not None) == (
                 self.num_classes is not None), "must specify y if and only if the model is class-conditional"
+        hs = []
+        t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
+        emb = self.time_embed(t_emb)
+
+        if self.num_classes is not None:
+            assert y.shape == (x.shape[0],)
+            emb = emb + self.label_emb(y)
+
+        h = x.type(self.dtype)
+        for module in self.input_blocks:
+            h = module(h, emb, context)
+            hs.append(h)
+        h = self.middle_block(h, emb, context)
+        for module in self.output_blocks:
+            h = torch.cat([h, hs.pop()], dim=1)
+            h = module(h, emb, context)
+        h = h.type(x.dtype)
+        if self.predict_codebook_ids:
+            return self.id_predictor(h)
+        else:
+            return self.out(h)
+
+
+class UNet3D(nn.Module):
+    def __init__(self, image_size, in_channels, model_channels, out_channels, num_res_blocks, attention_resolutions,
+                 dropout=0, channel_mult=(1, 2, 4, 8), conv_resample=True, dims=3, num_classes=None,
+                 use_checkpoint=False, use_fp16=False, num_heads=-1, num_head_channels=-1, use_scale_shift_norm=False,
+                 resblock_updown=False, use_new_attention_order=False, use_spatial_transformer=False,
+                 transformer_depth=1, context_dim=None, n_embed=None, legacy=True, ):
+        super().__init__()
+        assert dims==3, 'only support 3 dimensions'
+        self.num_heads = num_heads
+        self.model_channels = model_channels
+        self.attention_resolutions = attention_resolutions
+        self.num_head_channels = num_head_channels
+        self.use_spatial_transformer = use_spatial_transformer
+        self.legacy = legacy
+        self.predict_codebook_ids = n_embed is not None
+
+        time_embed_dim = model_channels * 4
+        self.time_embed = nn.Sequential(
+            linear(model_channels, time_embed_dim),
+            nn.SiLU(),
+            linear(time_embed_dim, time_embed_dim)
+        )
+        self.input_blocks = nn.ModuleList(
+            [TimestepEmbedSequential(nn.Conv3d(in_channels, model_channels, kernel_size=(1, 3, 3), stride=1,
+                                               padding=(0, 1, 1)))])
+
+        ################################# the input blocks #############################
+        self._feature_size = model_channels
+        input_block_chans = [model_channels]
+        ch = model_channels
+        ds = 1
+        for level, mult in enumerate(channel_mult):
+            for _ in range(num_res_blocks):
+                layers = [ResBlock(ch, time_embed_dim, dropout, out_channels=mult * model_channels, dims=dims,
+                                   use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm)]
+
+                ch = mult * model_channels
+                if ds in attention_resolutions:
+                    dim_head = self.update_head_info(ch)
+
+                    layers.append(SpatialTransformer(ch, self.num_heads, dim_head, depth=transformer_depth, dims=dims,
+                                                     context_dim=context_dim) if use_spatial_transformer else AttentionBlock(
+                        ch, use_checkpoint=use_checkpoint, num_head_channels=dim_head, num_heads=self.num_heads,
+                        use_new_attention_order=use_new_attention_order))
+                self.input_blocks.append(TimestepEmbedSequential(*layers))
+                self._feature_size += ch
+                input_block_chans.append(ch)
+            if level != len(channel_mult) - 1:
+                out_ch = ch
+                self.input_blocks.append(TimestepEmbedSequential(
+                    ResBlock(ch, time_embed_dim, dropout, out_channels=out_ch, dims=dims, use_checkpoint=use_checkpoint,
+                             use_scale_shift_norm=use_scale_shift_norm, down=True, ) if resblock_updown else Downsample(
+                        ch, conv_resample, dims=dims, out_channels=out_ch)))
+                ch = out_ch
+                input_block_chans.append(ch)
+                ds *= 2
+                self._feature_size += ch
+        ################################# the middle blocks #############################
+        dim_head = self.update_head_info(ch)
+
+        self.middle_block = TimestepEmbedSequential(
+            ResBlock(ch, time_embed_dim, dropout, dims=dims, use_checkpoint=use_checkpoint,
+                     use_scale_shift_norm=use_scale_shift_norm, ),
+            AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=self.num_heads, num_head_channels=dim_head,
+                           use_new_attention_order=use_new_attention_order, ) if not use_spatial_transformer else
+            SpatialTransformer(ch, self.num_heads, dim_head, dims=dims, depth=transformer_depth,
+                               context_dim=context_dim),
+            ResBlock(ch, time_embed_dim, dropout, dims=dims, use_checkpoint=use_checkpoint,
+                     use_scale_shift_norm=use_scale_shift_norm, ), )
+        self._feature_size += ch
+
+        ################################# the output blocks ################################
+        self.output_blocks = nn.ModuleList([])
+        for level, mult in list(enumerate(channel_mult))[::-1]:
+            for i in range(num_res_blocks + 1):
+                ich = input_block_chans.pop()
+                layers = [ResBlock(ch + ich, time_embed_dim, dropout, out_channels=model_channels * mult, dims=dims,
+                                   use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm, )]
+                ch = model_channels * mult
+                if ds in attention_resolutions:
+                    dim_head = self.update_head_info(ch)
+                    layers.append(SpatialTransformer(ch, self.num_heads, dim_head, depth=transformer_depth, dims=dims,
+                                                     context_dim=context_dim) if use_spatial_transformer else
+                                  AttentionBlock(ch, use_checkpoint=use_checkpoint, num_head_channels=dim_head,
+                                                 num_heads=self.num_heads,
+                                                 use_new_attention_order=use_new_attention_order))
+                if level and i == num_res_blocks:
+                    out_ch = ch
+                    layers.append(ResBlock(ch, time_embed_dim, dropout, out_channels=out_ch, dims=dims, up=True,
+                                           use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm, )
+                                  if resblock_updown else Upsample(ch, conv_resample, dims=dims, out_channels=out_ch))
+                    ds //= 2
+                self.output_blocks.append(TimestepEmbedSequential(*layers))
+                self._feature_size += ch
+
+        self.out = nn.Sequential(normalization(ch), nn.SiLU(),
+                                 zero_module(nn.Conv3d(in_channels, model_channels, kernel_size=(1, 3, 3), stride=1,
+                                                       padding=(0, 1, 1))), )
+
+        if self.predict_codebook_ids:
+            self.id_predictor = nn.Sequential(normalization(ch), conv_nd(dims, model_channels, n_embed, 1), )
+
+    def update_head_info(self, ch):
+        if self.num_head_channels == -1:
+            dim_head = ch // self.num_heads
+        else:
+            self.num_heads = ch // self.num_head_channels  # multi-head attention
+            dim_head = self.num_head_channels
+        if self.legacy:
+            dim_head = ch // self.num_heads if self.use_spatial_transformer else self.num_head_channels
+
+        return dim_head
+
+    def forward(self, x, timesteps=None, context=None, y=None, **kwargs):
+        assert (y is not None) == (self.num_classes is not None), \
+            "must specify y if and only if the model is class-conditional"
         hs = []
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
         emb = self.time_embed(t_emb)

@@ -22,7 +22,7 @@ model:
     monitor: val/loss_simple_ema
 
     unet_config:
-      target: ldm.modules.diffusionmodules.openaimodel.UNetModel
+      target: lvd.modules.diffusionmodules.UNetModel
       params:
         image_size: 64
         in_channels: 3
@@ -46,7 +46,7 @@ model:
     first_stage_config:
       target: lvd.models.vqvae.VQVAE
       params:
-        ckpt_path: pretrained/epoch=68-step=16629.ckpt
+        ckpt_path: pretrained/epoch=35-step=8676.ckpt
 
     cond_stage_config:
       target: lvd.modules.encoders.ClassEmbedder

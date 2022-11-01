@@ -15,19 +15,19 @@ model:
     timesteps: 1000
     first_stage_key: video
     cond_stage_key: label
-    image_size: 32
-    channels: 4
+    image_size: 64
+    channels: 3
     cond_stage_trainable: true
     conditioning_key: crossattn
     monitor: val/loss_simple_ema
-    enable_first_stage: True
+
     unet_config:
-      target: lvd.modules.diffusionmodules.UNetModel
+      target: lvd.modules.diffusionmodules.UNet3D
       params:
-        image_size: 32
-        in_channels: 4
-        out_channels: 4
-        model_channels: 128
+        image_size: 64
+        in_channels: 3
+        out_channels: 3
+        model_channels: 256
         attention_resolutions:
           - 4
           - 2
@@ -37,11 +37,11 @@ model:
           - 1
           - 2
           - 4
-        dims: 2
+        dims: 3
         num_head_channels: 32
         use_spatial_transformer: true
         transformer_depth: 1
-        context_dim: 256
+        context_dim: 512
 
     first_stage_config:
       target: lvd.models.vqvae.VQVAE
@@ -51,16 +51,16 @@ model:
     cond_stage_config:
       target: lvd.modules.encoders.ClassEmbedder
       params:
-        embed_dim: 256
+        embed_dim: 512
         key: label
 
 data:
   target: datasets.video_dataset.VideoData
   params:
     data_path: data/ucf101
-    batch_size: 1
+    batch_size: 2
     num_workers: 0
-    resolution: 128
+    resolution: 64
     sequence_length: 16
 
 
