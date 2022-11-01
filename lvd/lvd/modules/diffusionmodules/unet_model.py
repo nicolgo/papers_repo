@@ -357,6 +357,8 @@ class UNet3D(nn.Module):
         self.use_spatial_transformer = use_spatial_transformer
         self.legacy = legacy
         self.predict_codebook_ids = n_embed is not None
+        self.num_classes = num_classes
+        self.dtype = torch.float16 if use_fp16 else torch.float32
 
         time_embed_dim = model_channels * 4
         self.time_embed = nn.Sequential(

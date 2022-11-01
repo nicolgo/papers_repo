@@ -226,17 +226,17 @@ class SpatialTransformer(nn.Module):
         if is_image:
             _, _, h, w = x.shape
         else:
-            _, _, _, h, w = x.shape
+            b, _, t, h, w = x.shape
         x_in = x
         x = self.norm(x)
         x = self.proj_in(x)
-        x = rearrange(x, 'b c h w -> b (h w) c') if is_image else rearrange(x, 'b c t h w -> b (h w) c t')
+        x = rearrange(x, 'b c h w -> b (h w) c') if is_image else rearrange(x, 'b c t h w -> (b t) (h w) c')
         for block in self.transformer_blocks:
             x = block(x, context=context)
         if is_image:
             x = rearrange(x, 'b (h w) c -> b c h w', h=h, w=w)
         else:
-            x = rearrange(x, 'b (h w) c t -> b c t h w', h=h, w=w)
+            x = rearrange(x, '(b t) (h w) c -> b c t h w', b=b, t=t, h=h, w=w)
         x = self.proj_out(x)
         return x + x_in
 
