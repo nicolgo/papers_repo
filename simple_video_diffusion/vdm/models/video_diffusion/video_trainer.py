@@ -1,11 +1,13 @@
 from vdm.models.video_diffusion.video_diffusion import *
 from datasets.video_dataset import VideoDataset
+from datasets import mmnist_data_loader
 
 
 class VideoTrainer(object):
     def __init__(self, diffusion_model, folder, *, ema_decay=0.995, num_frames=16, train_batch_size=32, train_lr=1e-4,
-            train_num_steps=100000, gradient_accumulate_every=2, amp=False, step_start_ema=2000, update_ema_every=10,
-            save_and_sample_every=1000, results_folder='./results', num_sample_rows=4, max_grad_norm=None):
+                 train_num_steps=100000, gradient_accumulate_every=2, amp=False, step_start_ema=2000,
+                 update_ema_every=10, save_and_sample_every=1000, results_folder='./results', num_sample_rows=4,
+                 max_grad_norm=None):
         super().__init__()
         self.model = diffusion_model
         self.ema = EMA(ema_decay)
@@ -26,6 +28,7 @@ class VideoTrainer(object):
 
         # self.ds = Dataset(folder, image_size, channels=channels, num_frames=num_frames)
         # self.dl = cycle(data.DataLoader(self.ds, batch_size=train_batch_size, shuffle=True, pin_memory=True))
+        # self.dl = mmnist_data_loader(n_frames=num_frames,num_digits=2,batch_size=train_batch_size)
         self.ds = VideoDataset(folder, sequence_length=num_frames, train=True, resolution=image_size)
         self.dl = torch.utils.data.DataLoader(self.ds, batch_size=train_batch_size, num_workers=0, pin_memory=True,
                                               shuffle=True)
@@ -56,7 +59,7 @@ class VideoTrainer(object):
 
     def save(self, milestone):
         data = {'step': self.step, 'model': self.model.state_dict(), 'ema': self.ema_model.state_dict(),
-            'scaler': self.scaler.state_dict()}
+                'scaler': self.scaler.state_dict()}
         torch.save(data, str(self.results_folder / f'model-{milestone}.pt'))
 
     def load(self, milestone, **kwargs):
@@ -84,7 +87,7 @@ class VideoTrainer(object):
 
                 with autocast(enabled=self.amp):
                     loss = self.model(data, prob_focus_present=prob_focus_present,
-                        focus_present_mask=focus_present_mask)
+                                      focus_present_mask=focus_present_mask)
 
                     self.scaler.scale(loss / self.gradient_accumulate_every).backward()
 
