@@ -5,6 +5,17 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "pixel_3d",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--base=configs/lvd_3d.yaml",
+            ]
+        },
+        {
             "name": "latent_experiment",
             "type": "python",
             "request": "launch",

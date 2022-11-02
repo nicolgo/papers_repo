@@ -6,7 +6,7 @@ from lvd.modules.diffusionmodules.util import (checkpoint, conv_nd, linear, avg_
                                                timestep_embedding, )
 import torch.nn.functional as F
 from abc import abstractmethod
-
+from lvd.modules.transformers import SpatialLinearAttention, TemporalAttention
 
 class TimestepBlock(nn.Module):
     """
@@ -385,9 +385,9 @@ class UNet3D(nn.Module):
                     dim_head = self.update_head_info(ch)
 
                     layers.append(SpatialTransformer(ch, self.num_heads, dim_head, depth=transformer_depth, dims=dims,
-                                                     context_dim=context_dim) if use_spatial_transformer else AttentionBlock(
-                        ch, use_checkpoint=use_checkpoint, num_head_channels=dim_head, num_heads=self.num_heads,
-                        use_new_attention_order=use_new_attention_order))
+                                                     context_dim=context_dim) if use_spatial_transformer else
+                                  SpatialLinearAttention(ch, heads=self.num_heads, dim_head=dim_head))
+                    layers.append(TemporalAttention(ch, heads=self.num_heads, dim_head=dim_head))
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
                 self._feature_size += ch
                 input_block_chans.append(ch)
@@ -407,10 +407,10 @@ class UNet3D(nn.Module):
         self.middle_block = TimestepEmbedSequential(
             ResBlock(ch, time_embed_dim, dropout, dims=dims, use_checkpoint=use_checkpoint,
                      use_scale_shift_norm=use_scale_shift_norm, ),
-            AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=self.num_heads, num_head_channels=dim_head,
-                           use_new_attention_order=use_new_attention_order, ) if not use_spatial_transformer else
+            SpatialLinearAttention(ch, heads=self.num_heads, dim_head=dim_head) if not use_spatial_transformer else
             SpatialTransformer(ch, self.num_heads, dim_head, dims=dims, depth=transformer_depth,
                                context_dim=context_dim),
+            TemporalAttention(ch, heads=self.num_heads, dim_head=dim_head),
             ResBlock(ch, time_embed_dim, dropout, dims=dims, use_checkpoint=use_checkpoint,
                      use_scale_shift_norm=use_scale_shift_norm, ), )
         self._feature_size += ch
@@ -427,20 +427,19 @@ class UNet3D(nn.Module):
                     dim_head = self.update_head_info(ch)
                     layers.append(SpatialTransformer(ch, self.num_heads, dim_head, depth=transformer_depth, dims=dims,
                                                      context_dim=context_dim) if use_spatial_transformer else
-                                  AttentionBlock(ch, use_checkpoint=use_checkpoint, num_head_channels=dim_head,
-                                                 num_heads=self.num_heads,
-                                                 use_new_attention_order=use_new_attention_order))
+                                  SpatialLinearAttention(ch, heads=self.num_heads, dim_head=dim_head))
                 if level and i == num_res_blocks:
                     out_ch = ch
                     layers.append(ResBlock(ch, time_embed_dim, dropout, out_channels=out_ch, dims=dims, up=True,
                                            use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm, )
                                   if resblock_updown else Upsample(ch, conv_resample, dims=dims, out_channels=out_ch))
+                    layers.append(TemporalAttention(ch, heads=self.num_heads, dim_head=dim_head))
                     ds //= 2
                 self.output_blocks.append(TimestepEmbedSequential(*layers))
                 self._feature_size += ch
 
         self.out = nn.Sequential(normalization(ch), nn.SiLU(),
-                                 zero_module(nn.Conv3d(in_channels, model_channels, kernel_size=(1, 3, 3), stride=1,
+                                 zero_module(nn.Conv3d(model_channels, out_channels, kernel_size=(1, 3, 3), stride=1,
                                                        padding=(0, 1, 1))), )
 
         if self.predict_codebook_ids:

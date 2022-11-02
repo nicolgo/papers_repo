@@ -403,8 +403,8 @@ class LatentDiffusion(DDPM):
             target = noise
         else:
             raise NotImplementedError()
-
-        loss_simple = self.get_loss(model_output, target, mean=False).mean([1, 2, 3])
+       
+        loss_simple = self.get_loss(model_output, target, mean=False).mean(list(range(1,len(x_start.shape))))
 
         loss_dict = {}
         prefix = 'train' if self.training else 'val'
