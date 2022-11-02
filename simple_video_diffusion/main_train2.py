@@ -7,7 +7,7 @@ from vdm.models.imagen.trainer import ImagenTrainer
 from vdm.models.imagen_video.imagen_video import Unet3D
 from datasets.UCF101 import UCF101Wrapper
 from root_dir import ROOT_DIR
-from utils.vision_util import save_as_gif
+# from utils.vision_util import save_as_gif
 import math
 
 if __name__ == "__main__":

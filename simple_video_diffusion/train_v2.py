@@ -4,7 +4,7 @@ from vdm.models.video_diffusion import Unet3D, GaussianDiffusion
 from vdm.models.video_diffusion.video_trainer import VideoTrainer
 from datasets.video_dataset import VideoDataset
 from root_dir import ROOT_DIR
-from utils.vision_util import save_as_gif
+# from utils.vision_util import save_as_gif
 
 if __name__ == "__main__":
     model = Unet3D(dim=64, dim_mults=(1, 2, 4, 8), )

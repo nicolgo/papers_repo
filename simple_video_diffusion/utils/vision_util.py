@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torchvision
 import PIL
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from einops import rearrange
 import math
 import numpy as np
@@ -56,15 +56,15 @@ def save_video_grid(video, fname, nrow=None):
     print('saved videos to', fname)
 
 
-def show_grid_images(imgs):
-    _, axs = plt.subplots(4, 4, figsize=(12, 12))
-    axs = axs.flatten()
-    i = 0
-    for img, ax in zip(imgs, axs):
-        image = rearrange(imgs[i], "c h w -> h w c")
-        ax.imshow(image)
-        i += 1
-    plt.show()
+# def show_grid_images(imgs):
+#     _, axs = plt.subplots(4, 4, figsize=(12, 12))
+#     axs = axs.flatten()
+#     i = 0
+#     for img, ax in zip(imgs, axs):
+#         image = rearrange(imgs[i], "c h w -> h w c")
+#         ax.imshow(image)
+#         i += 1
+#     plt.show()
 
 
 def save_as_gif(images, file_name):

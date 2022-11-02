@@ -9,7 +9,7 @@ import torch.utils.data as data
 import pickle
 import torch.nn.functional as F
 from torchvision.datasets.video_utils import VideoClips
-from utils.vision_util import save_video_grid, show_grid_images, save_as_gif
+# from utils.vision_util import save_video_grid, show_grid_images, save_as_gif
 
 
 def get_parent_dir(path):
@@ -112,5 +112,5 @@ if __name__ == "__main__":
     videos = next(iter(dataloader)) # videos["video"] (B,C,T,H,W)
     # show_grid_images(einops.rearrange(videos["video"][0], "c t h w -> t c h w"))
 
-    save_as_gif(videos["video"][0], 'sample.gif')
+    # save_as_gif(videos["video"][0], 'sample.gif')
     # save_video_grid(videos["video"], 'samples.mp4')
