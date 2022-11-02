@@ -215,10 +215,10 @@ class VideoData(pl.LightningDataModule):
 
 
 if __name__ == "__main__":
-    data_path = osp.join(ROOT_DIR, "data/ucf101")
-    # data_path = "D:/ssd/nicol/papers_repo/simple_video_diffusion/data/ucf101"
+    # data_path = osp.join(ROOT_DIR, "data/ucf101")
+    data_path = "D:/ssd/nicol/papers_repo/lvd/data/ucf101"
     sequence_length = 16
-    resolution = 128
+    resolution = 32
     train = True
     dataset = VideoDataset(data_path, sequence_length, train=train, resolution=resolution)
     sampler = None
