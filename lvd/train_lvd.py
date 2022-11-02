@@ -22,7 +22,7 @@ def main():
     model.learning_rate = model_config.base_learning_rate
 
     trainer_kwargs = dict()
-    call_backs = [ModelCheckpoint(monitor='val/loss', mode='min')]
+    call_backs = [ModelCheckpoint(monitor='val/loss_simple', mode='min')]
     trainer_kwargs["callbacks"] = call_backs
     trainer = pl.Trainer.from_argparse_args(trainer_opt, **trainer_kwargs)
 
