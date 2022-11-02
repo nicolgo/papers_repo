@@ -5,6 +5,18 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "linux_pixel_3d",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--base=configs/linux_lvd_3d.yaml",
+                // "--base=configs/linux_lvd_latent.yaml",
+            ]
+        },
+        {
             "name": "pixel_3d",
             "type": "python",
             "request": "launch",
