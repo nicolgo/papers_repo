@@ -1,6 +1,7 @@
 from selenium import webdriver
 import time
 from bs4 import BeautifulSoup
+import json
 
 ########### open browser ############
 # driver = webdriver.Chrome(executable_path="./chromedriver")
@@ -14,37 +15,48 @@ driver.refresh()
 
 cookie = driver.get_cookies()
 
-########### 查询query ############
-for query in ['cat', 'dog']:
 
-    ########### 查询query，限制video时长在4分钟以内 ############
-    url = 'https://www.youtube.com/results?search_query=' + query + '&sp=EgQQARgB'
+def get_videos(video_num):
+    video_ids = list()
+    stop_flag = False
+    while True:
+        html = driver.page_source
+        page = BeautifulSoup(html, 'html.parser')
+        videos = page.find_all('a', id="thumbnail")
+
+        for item in videos:
+            video = item.get("href")
+            if video is not None and "/watch?v=" in video:
+                video_id = video.replace('/watch?v=', '')
+                if video_id not in video_ids:
+                    video_ids.append(video_id)
+                print(video_id)
+                if len(video_ids) > video_num:
+                    stop_flag = True
+                    break
+        if stop_flag:
+            break
+        js = "var q=document.documentElement.scrollTop=100000000000"
+        driver.execute_script(js)
+        time.sleep(3)  # 等待页面刷新
+    return video_ids
+
+
+keywords = ["natural | nature sounds | landscape"]
+final_res = dict()
+for query in keywords:
+    # query video by keywords and condition with 4-20mins/4K/HD/license
+    url = 'https://www.youtube.com/results?search_query=' + query + '&sp=EggYAyABMAFwAQ%253D%253D'
     driver.get(url)
     print(query)
 
-    def execute_times(times):
-        for i in range(times + 1):
-            ########### 解析html ############
-            html = driver.page_source
-            soup = BeautifulSoup(html, 'html.parser')
-            zzr = soup.find_all('a', id="thumbnail")
-
-            ########### 获取video_id ############
-            for item in zzr:
-                video = item.get("href")
-                if video is not None and "/watch?v=" in video:
-                    video_id = video.replace('/watch?v=', '')
-                    print(video_id)
-
-            ########### 模拟鼠标向下滑动 ############
-            js = "var q=document.documentElement.scrollTop=100000000000"
-            driver.execute_script(js)
-            time.sleep(3)  # 等待页面刷新
-
-
-    ########### 模拟鼠标向下滑动3次 ############
-    execute_times(3)
+    video_ids = get_videos(100)
+    final_res[query] = video_ids
     time.sleep(1)
 
-########### 退出Chrome ############
+json_obj = json.dumps(final_res, indent=4)
+with open("search_res.json", "w") as outfile:
+    outfile.write(json_obj)
+
+# exist broswer
 driver.quit()
