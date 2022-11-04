@@ -75,7 +75,7 @@ class VideoDataset(data.Dataset):
         warnings.filterwarnings('ignore')
         cache_file = osp.join(folder, f"metadata_{sequence_length}.pkl")
         if not osp.exists(cache_file):
-            clips = VideoClips(files, sequence_length, num_workers=32)
+            clips = VideoClips(files, sequence_length, num_workers=0)
             pickle.dump(clips.metadata, open(cache_file, 'wb'))
         else:
             metadata = pickle.load(open(cache_file, 'rb'))
