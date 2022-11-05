@@ -42,7 +42,7 @@ def get_videos(video_num):
     return video_ids
 
 
-keywords = ["natural | nature sounds | landscape"]
+keywords = ["natural | nature sounds | landscape and river"]
 final_res = dict()
 for query in keywords:
     # query video by keywords and condition with 4-20mins/4K/HD/license
@@ -50,12 +50,12 @@ for query in keywords:
     driver.get(url)
     print(query)
 
-    video_ids = get_videos(100)
+    video_ids = get_videos(400)
     final_res[query] = video_ids
     time.sleep(1)
 
 json_obj = json.dumps(final_res, indent=4)
-with open("search_res.json", "w") as outfile:
+with open("search_res_400.json", "w") as outfile:
     outfile.write(json_obj)
 
 # exist broswer
