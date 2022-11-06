@@ -12,3 +12,4 @@ dependencies:
     - beautifulsoup4==4.11.1
     - selenium==4.6.0
     - opencv-python==4.6.0.66
+    - glob2==0.7
