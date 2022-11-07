@@ -29,12 +29,14 @@ def clip_specific_videos(raw_video, out_path, duration, start_time):
 
 
 if __name__ == "__main__":
-    raw_video = "./SpaceJourney.mp4"
+    video_dir = "D:/disk/data/space"
+    videos = glob.glob(os.path.join(video_dir, '*'))
     output_dir = "D:/disk/data/surprised"
     j = 0
-    for i in tqdm(range(0, 11100, 60)):
-        out_path = os.path.join(output_dir, f"surprised_{j}.mp4")
-        clip_specific_videos(raw_video, out_path, duration=15, start_time=i)
-        j = j + 1
-        # i = i + 60
-    pass
+    for i in tqdm(range(0, len(videos))):
+        raw_video = videos[i]
+        for i in tqdm(range(0, 2400, 60)):
+            out_path = os.path.join(output_dir, f"surprised_{j}.mp4")
+            clip_specific_videos(raw_video, out_path, duration=15, start_time=i)
+            j = j + 1
+            # i = i + 60
