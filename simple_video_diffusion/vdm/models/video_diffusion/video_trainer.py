@@ -1,6 +1,5 @@
-from vdm.models.video_diffusion.video_diffusion import *
 from datasets.video_dataset import VideoDataset
-from datasets import mmnist_data_loader
+from vdm.models.video_diffusion.video_diffusion import *
 
 
 class VideoTrainer(object):
@@ -65,8 +64,8 @@ class VideoTrainer(object):
     def load(self, milestone, **kwargs):
         if milestone == -1:
             all_milestones = [int(p.stem.split('-')[-1]) for p in Path(self.results_folder).glob('**/*.pt')]
-            assert len(
-                all_milestones) > 0, 'need to have at least one milestone to load from latest checkpoint (milestone == -1)'
+            assert len(all_milestones) > 0, 'need to have at least ' \
+                                            'one milestone to load from latest checkpoint (milestone == -1)'
             milestone = max(all_milestones)
 
         data = torch.load(str(self.results_folder / f'model-{milestone}.pt'))
