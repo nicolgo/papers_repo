@@ -1,3 +1,5 @@
+from torch.utils.tensorboard import SummaryWriter
+
 from datasets.video_dataset import VideoDataset
 from vdm.models.video_diffusion.video_diffusion import *
 
@@ -44,7 +46,7 @@ class VideoTrainer(object):
         self.num_sample_rows = num_sample_rows
         self.results_folder = Path(results_folder)
         self.results_folder.mkdir(exist_ok=True, parents=True)
-
+        self.writer = SummaryWriter()
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -77,7 +79,6 @@ class VideoTrainer(object):
 
     def train(self, prob_focus_present=0., focus_present_mask=None, log_fn=noop):
         assert callable(log_fn)
-
         while self.step < self.train_num_steps:
             for i in range(self.gradient_accumulate_every):
                 videos = next(iter(self.dl))
@@ -120,8 +121,8 @@ class VideoTrainer(object):
                 video_tensor_to_gif(one_gif, video_path)
                 log = {**log, 'sample': video_path}
                 self.save(milestone)
-
             log_fn(log)
+            self.writer.add_scalar("loss/train", loss.item(), self.step)
             self.step += 1
-
+        self.writer.close()
         print('training completed')
