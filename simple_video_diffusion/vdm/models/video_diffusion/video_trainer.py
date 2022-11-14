@@ -83,16 +83,14 @@ class VideoTrainer(object):
             for i in range(self.gradient_accumulate_every):
                 videos = next(iter(self.dl))
                 data = videos["video"].cuda()
+                label = videos["label"].cuda()
                 # data = next(iter(self.dl)).cuda()
 
                 with autocast(enabled=self.amp):
-                    loss = self.model(data, prob_focus_present=prob_focus_present,
+                    loss = self.model(data, cond=label, prob_focus_present=prob_focus_present,
                                       focus_present_mask=focus_present_mask)
-
                     self.scaler.scale(loss / self.gradient_accumulate_every).backward()
-
                 print(f'{self.step}: {loss.item()}')
-
             log = {'loss': loss.item()}
 
             if exists(self.max_grad_norm):
@@ -110,10 +108,10 @@ class VideoTrainer(object):
                 milestone = self.step // self.save_and_sample_every
                 num_samples = self.num_sample_rows ** 2
                 batches = num_to_groups(num_samples, self.batch_size)
-
-                all_videos_list = list(map(lambda n: self.ema_model.sample(batch_size=n), batches))
+                all_videos_list = list(
+                    map(lambda n: self.ema_model.sample(batch_size=n, cond=torch.tensor([0] * num_samples).cuda()),
+                        batches))
                 all_videos_list = torch.cat(all_videos_list, dim=0)
-
                 all_videos_list = F.pad(all_videos_list, (2, 2, 2, 2))
 
                 one_gif = rearrange(all_videos_list, '(i j) c f h w -> c f (i h) (j w)', i=self.num_sample_rows)

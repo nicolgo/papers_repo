@@ -354,7 +354,7 @@ class Unet3D(nn.Module):
                                                               rotary_emb=rotary_emb))
         # realistically will not be able to generate that many frames of video... yet
         self.time_rel_pos_bias = RelativePositionBias(heads=attn_heads, max_distance=32)
-
+        self.embedding = nn.Embedding(10, cond_dim)
         # initial conv
         init_dim = default(init_dim, dim)
         assert is_odd(init_kernel_size)
@@ -444,7 +444,7 @@ class Unet3D(nn.Module):
         if self.has_cond:
             batch, device = x.shape[0], x.device
             mask = prob_mask_like((batch,), null_cond_prob, device=device)
-            cond = torch.where(rearrange(mask, 'b -> b 1'), self.null_cond_emb, cond)
+            cond = torch.where(rearrange(mask, 'b -> b 1'), self.null_cond_emb, self.embedding(cond))
             t = torch.cat((t, cond), dim=-1)
 
         h = []
