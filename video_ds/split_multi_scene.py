@@ -6,7 +6,7 @@ import glob
 from tqdm import tqdm
 
 if __name__ == "__main__":
-    video_dir = "D:/disk/data/demo/video/multi"
+    video_dir = "D:/disk/data/sad_new/all_sad_videos"
     videos = glob.glob(os.path.join(video_dir, '*'))
 
     for i in tqdm(range(0, len(videos))):
