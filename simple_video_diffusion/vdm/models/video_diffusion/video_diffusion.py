@@ -70,7 +70,6 @@ def is_list_str(x):
 
 
 # relative positional bias
-
 class RelativePositionBias(nn.Module):
     def __init__(self, heads=8, num_buckets=32, max_distance=128):
         super().__init__()
@@ -181,8 +180,6 @@ class PreNorm(nn.Module):
 
 
 # building block modules
-
-
 class Block(nn.Module):
     def __init__(self, dim, dim_out, groups=8):
         super().__init__()
@@ -253,7 +250,6 @@ class SpatialLinearAttention(nn.Module):
 
 
 # attention along space and time
-
 class EinopsToAndFrom(nn.Module):
     def __init__(self, from_einops, to_einops, fn):
         super().__init__()
@@ -293,28 +289,19 @@ class Attention(nn.Module):
             return self.to_out(values)
 
         # split out heads
-
         q, k, v = rearrange_many(qkv, '... n (h d) -> ... h n d', h=self.heads)
-
         # scale
-
         q = q * self.scale
-
         # rotate positions into queries and keys for time attention
-
         if exists(self.rotary_emb):
             q = self.rotary_emb.rotate_queries_or_keys(q)
             k = self.rotary_emb.rotate_queries_or_keys(k)
 
         # similarity
-
         sim = einsum('... h i d, ... h j d -> ... h i j', q, k)
-
         # relative positional bias
-
         if exists(pos_bias):
             sim = sim + pos_bias
-
         if exists(focus_present_mask) and not (~focus_present_mask).all():
             attend_all_mask = torch.ones((n, n), device=device, dtype=torch.bool)
             attend_self_mask = torch.eye(n, device=device, dtype=torch.bool)
@@ -326,19 +313,14 @@ class Attention(nn.Module):
             sim = sim.masked_fill(~mask, -torch.finfo(sim.dtype).max)
 
         # numerical stability
-
         sim = sim - sim.amax(dim=-1, keepdim=True).detach()
         attn = sim.softmax(dim=-1)
-
         # aggregate values
-
         out = einsum('... h i j, ... h j d -> ... h i d', attn, v)
         out = rearrange(out, '... h n d -> ... n (h d)')
         return self.to_out(out)
 
-
 # model
-
 class Unet3D(nn.Module):
     def __init__(self, dim, cond_dim=None, out_dim=None, dim_mults=(1, 2, 4, 8), channels=3, attn_heads=8,
                  attn_dim_head=32, use_bert_text_cond=False, init_dim=None, init_kernel_size=7,
@@ -448,7 +430,6 @@ class Unet3D(nn.Module):
             t = torch.cat((t, cond), dim=-1)
 
         h = []
-
         for block1, block2, spatial_attn, temporal_attn, downsample in self.downs:
             x = block1(x, t)
             x = block2(x, t)
@@ -570,10 +551,8 @@ class GaussianDiffusion(nn.Module):
             s = 1.
             if self.use_dynamic_thres:
                 s = torch.quantile(rearrange(x_recon, 'b ... -> b (...)').abs(), self.dynamic_thres_percentile, dim=-1)
-
                 s.clamp_(min=1.)
                 s = s.view(-1, *((1,) * (x_recon.ndim - 1)))
-
             # clip by threshold, depending on whether static or dynamic
             x_recon = x_recon.clamp(-s, s) / s
 
@@ -593,7 +572,6 @@ class GaussianDiffusion(nn.Module):
     @torch.inference_mode()
     def p_sample_loop(self, shape, cond=None, cond_scale=1.):
         device = self.betas.device
-
         b = shape[0]
         img = torch.randn(shape, device=device)
 
@@ -669,14 +647,12 @@ class GaussianDiffusion(nn.Module):
 
 
 # trainer class
-
 CHANNELS_TO_MODE = {1: 'L', 3: 'RGB', 4: 'RGBA'}
 
 
 def seek_all_images(img, channels=3):
     assert channels in CHANNELS_TO_MODE, f'channels {channels} invalid'
     mode = CHANNELS_TO_MODE[channels]
-
     i = 0
     while True:
         try:
@@ -688,7 +664,6 @@ def seek_all_images(img, channels=3):
 
 
 # tensor of shape (channels, frames, height, width) -> gif
-
 def video_tensor_to_gif(tensor, path, duration=120, loop=0, optimize=True):
     images = map(T.ToPILImage(), tensor.unbind(dim=1))
     first_img, *rest_imgs = images
@@ -752,7 +727,6 @@ class Dataset(data.Dataset):
 
 
 # trainer class
-
 class Trainer(object):
     def __init__(self, diffusion_model, folder, *, ema_decay=0.995, num_frames=16, train_batch_size=32, train_lr=1e-4,
                  train_num_steps=100000, gradient_accumulate_every=2, amp=False, step_start_ema=2000,
