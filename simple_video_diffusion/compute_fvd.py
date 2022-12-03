@@ -37,7 +37,7 @@ def load_i3d_pretrained(device=torch.device('cpu')):
 def main():
     device = torch.device(f"cuda:{0}")
     all_batch_size = 16
-    sample_iters = 25
+    sample_iters = 2
     sample_milestone = 215
     model = Unet3D(dim=64, cond_dim=64, dim_mults=(1, 2, 4, 8), )
     diffusion = GaussianDiffusion(model, image_size=64, num_frames=10, timesteps=1000, loss_type='l2').cuda()
@@ -105,7 +105,8 @@ def eval_fvd(i3d, trainer, loader, device):
     all_videos_list = list(
         map(lambda n: trainer.ema_model.sample(batch_size=n, cond=(batch['label'].to(device))), batches))
     fake = torch.cat(all_videos_list, dim=0)
-    fake = (fake + 0.5).clamp(0, 1)
+    fake = torch.clamp(fake, -0.5, 0.5) + 0.5
+    # fake = (fake + 0.5).clamp(0, 1)
     fake = fake.permute(0, 2, 3, 4, 1).cpu().numpy()  # BCTHW -> BTHWC
     fake = (fake * 255).astype('uint8')
     fake_embeddings.append(get_fvd_logits(fake, i3d=i3d, device=device))

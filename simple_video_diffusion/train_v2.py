@@ -20,13 +20,13 @@ if __name__ == "__main__":
             GaussianDiffusion(model, image_size=64, num_frames=10, timesteps=1000, loss_type='l1'))
         diffusion = diffusion.cuda()
     else:
-        diffusion = GaussianDiffusion(model, image_size=64, num_frames=10, timesteps=1000, loss_type='l1').cuda()
+        diffusion = GaussianDiffusion(model, image_size=64, num_frames=12, timesteps=500, loss_type='l1').cuda()
 
-    trainer = VideoTrainer(diffusion, "D:/ssd/nicol/papers_repo/simple_video_diffusion/data/ucf101", train_batch_size=2,
+    trainer = VideoTrainer(diffusion, "D:/ssd/nicol/papers_repo/simple_video_diffusion/data/dataset_split", train_batch_size=2,
                            train_lr=1e-4, save_and_sample_every=2000, train_num_steps=700000,  # total training steps
                            gradient_accumulate_every=2,  # gradient accumulation steps
                            ema_decay=0.995,  # exponential moving average decay
                            amp=True,  # turn on mixed precision
                            num_sample_rows=1)
 
-    trainer.train()
+    trainer.train(prob_focus_present=0.5)
